@@ -73,7 +73,12 @@ cargo build --release
 
 ## 许可
 
-MIT
+MIT。
+
+选它是因为实际情况允许：核心 15 个 Rust 依赖逐个查过 SPDX（pulldown-cmark / pulldown-cmark-escape / zmij 是 MIT，
+bitflags / itoa / proc-macro2 / quote / serde 全家 / syn / unicase 是 MIT OR Apache-2.0，memchr 是 Unlicense OR MIT，
+unicode-ident 是 (MIT OR Apache-2.0) AND Unicode-3.0），没有一个 copyleft 依赖会反向约束；
+界面壳跑在 .NET 上，运行时本身也是 MIT。所以 MIT 既不影响你以后闭源分发，也不会和上游冲突。
 
 ---
 
