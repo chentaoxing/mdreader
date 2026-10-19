@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["crates/mdcore", "crates/mdcore-ffi", "crates/mdfile-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+authors = ["MD 文件助手 / mdfile"]
+repository = "https://example.invalid/mdfile-assistant"
+
+[workspace.dependencies]
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["pulldown-cmark-escape"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mdcore = { path = "crates/mdcore" }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 4
+# panic = unwind 是刻意为之：FFI 边界需要 catch_unwind 把 panic 转成状态码，
+# 绝不让 Rust panic 跨过 C ABI。核心内部逻辑不依赖 panic 控制流。
+panic = "unwind"

@@ -1,0 +1,10 @@
+[package]
+name = "mdfile-cli"
+description = "MD 文件助手命令行前端：验证核心引擎可脱离 GUI 独立运行（规格第七章）。"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+mdcore = { workspace = true }

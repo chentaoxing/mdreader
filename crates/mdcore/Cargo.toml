@@ -1,0 +1,24 @@
+[package]
+name = "mdcore"
+description = "MD 文件助手跨平台核心引擎：Markdown AST / Document Model / Content Guard / Rule Engine / Readability / Diff。平台无关，无 UI 依赖，无网络依赖。"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "mdcore"
+crate-type = ["rlib"]
+
+[features]
+default = []
+# 供未来 FFI / 序列化集成使用；核心算法本身不依赖这些 feature
+json = ["dep:serde", "dep:serde_json"]
+
+[dependencies]
+pulldown-cmark = { workspace = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

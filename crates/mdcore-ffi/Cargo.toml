@@ -1,0 +1,19 @@
+[package]
+name = "mdcore-ffi"
+description = "MD 文件助手核心的 C ABI 封装层：Android(Kotlin/JNI)、iOS/macOS(Swift/Objective-C)、Windows/Linux(C) 与 WASM 共用同一份导出。此 crate 只做序列化与内存管理，不含任何 Markdown 语义逻辑。"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "mdcore_ffi"
+# staticlib -> iOS/XCStaticLib、Android .so 静态链接
+# cdylib   -> Windows/Linux/macOS 动态库
+# rlib     -> 供 Rust 侧集成测试直接调用
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]
+mdcore = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,24 @@
+# 默认：文本文件按平台规范化换行
+* text=auto
+
+# 下面这些是**逐字节验收的输入**，一旦被转换，金样与指纹基线就对不上了：
+# tests/corpus 里刻意放了 CRLF / 只有 CR / 带 BOM / 空文件 / 全角标点等变体，
+# shell/win-wpf/samples 里放了 GBK、GB18030、UTF-16LE 与含 NUL 的编码样例。
+tests/corpus/** -text
+shell/win-wpf/samples/** -text
+
+# 二进制
+*.png -text
+*.ico -text
+*.jpg -text
+*.dll -text
+*.so -text
+*.a -text
+
+# 源码统一用 LF 入库
+*.rs text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.toml text eol=lf
+*.sh text eol=lf
+*.csv text eol=lf

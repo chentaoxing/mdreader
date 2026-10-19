@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows 界面壳：只做「选文件 / 调 mdfile.h 里的入口 / 渲染结构化数据 / 接受或拒绝」。
+    排版判定一行都不在这里——全部来自 mdcore_ffi.dll（与四个平台共用的同一份核心）。
+    之所以是 WPF 而不是 Tauri：这台机器没有 Rust 与 MSVC 工具链，而有 .NET 桌面运行时，
+    先让功能真的出现在软件界面里，比选一个装不上的框架更重要。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>MdFileAssistant</AssemblyName>
+    <RootNamespace>MdFileAssistant</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
+    <Product>MD文档阅读助手</Product>
+    <!-- 资源管理器里 exe 的「文件说明」；程序集名与 C ABI 前缀 mdfile_* 暂时不动，
+         它们牵动已注册的 .md 打开方式与四平台绑定命名 -->
+    <AssemblyTitle>MD文档阅读助手</AssemblyTitle>
+    <Copyright>本地运行，不发任何网络请求</Copyright>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 核心动态库随程序一起走；缺它时程序会明确提示，而不是静默降级 -->
+    <!-- 必须落在 exe 同目录：DllImport 只搜程序目录与 PATH，不会进子目录找 -->
+    <None Include="Native\mdcore_ffi.dll" Link="mdcore_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="app.ico" />
+  </ItemGroup>
+
+</Project>
