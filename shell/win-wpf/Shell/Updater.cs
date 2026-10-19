@@ -80,13 +80,18 @@ public static class Updater
         {
             var (tag, asset) = await FetchLatestAsync(client).ConfigureAwait(false);
             if (tag == null)
+            {
+                Log($"检查：没有已发布的版本（{proxyNote}）");
                 return new CheckResult(false, current, null, false, null,
-                    $"这个仓库还没有发布版本（走的是{proxyNote}）", proxyNote);
-            return new CheckResult(true, current, tag, IsNewer(tag, current),
-                asset?.Name, null, proxyNote);
+                    "这个仓库还没有发布版本（走的是" + proxyNote + "）", proxyNote);
+            }
+            var available = IsNewer(tag, current);
+            Log($"检查：当前 v{current} 最新 v{tag} 需更新={available} 资产={asset?.Name ?? "无"}（{proxyNote}）");
+            return new CheckResult(true, current, tag, available, asset?.Name, null, proxyNote);
         }
         catch (Exception e)
         {
+            Log($"检查失败：{e.GetType().Name} {e.Message}（{proxyNote}）");
             return new CheckResult(false, current, null, false, null, Friendly(e), proxyNote);
         }
         finally { client.Dispose(); }
@@ -155,15 +160,33 @@ public static class Updater
                 }
             }
         }
-        catch (Exception) { /* 抓不到直链也要把版本号带回去 */ }
+        catch (Exception e) { Log($"expanded_assets 抓直链失败：{e.GetType().Name} {e.Message}（版本号仍带回去）"); }
         return (t, null);
     }
 
     private static string? Str(JsonElement e, string p) =>
         e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-    /// <summary>GET 且手工跟随重定向：每一跳都重新过 NetGuard。</summary>
+    /// <summary>传输层抖动重试：最多三次，退避 1.5s / 3s。HTTP 状态码不算失败，不重试。</summary>
     private static async Task<HttpResponseMessage> GetAsync(HttpClient client, string url, TimeSpan timeout)
+    {
+        Exception? last = null;
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try { return await GetOnceAsync(client, url, timeout).ConfigureAwait(false); }
+            catch (Exception e) when (NetGuard.IsTransient(e) && attempt < 3)
+            {
+                last = e;
+                Log($"第 {attempt} 次出网失败（{e.GetType().Name}: {e.Message}），{(attempt * 1.5):F1}s 后重试");
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 1.5)).ConfigureAwait(false);
+            }
+            catch (Exception e) { last = e; break; }
+        }
+        throw last!;
+    }
+
+    /// <summary>GET 且手工跟随重定向：每一跳都重新过 NetGuard。</summary>
+    private static async Task<HttpResponseMessage> GetOnceAsync(HttpClient client, string url, TimeSpan timeout)
     {
         var until = Stopwatch.StartNew();
         var current = url;
@@ -230,6 +253,7 @@ public static class Updater
         var errors = new List<string>();
         // 候选源：目前只有 GitHub 一条；镜像接进来后这里变成两条，换源逻辑不用动
         var candidates = new List<string> { url };
+        Log($"开始下载 {NetGuard.Validate(url).Host} 预期 {expectedSize} 字节，候选源 {candidates.Count} 个");
         for (int i = 0; i < candidates.Count; i++)
         {
             var last = i == candidates.Count - 1;
@@ -240,12 +264,15 @@ public static class Updater
                 if (size < MinPackageBytes) { TryDelete(dest); throw new Exception($"更新包过小（{size} 字节），已丢弃"); }
                 if (expectedSize > 0 && size != expectedSize) { TryDelete(dest); throw new Exception($"下载不完整（{size}/{expectedSize} 字节）"); }
                 progress.Report("100%");
+                Log($"下载完成 {size} 字节 -> {dest}");
                 return dest;
             }
             catch (Exception e)
             {
                 errors.Add($"{new Uri(candidates[i]).Host}: {e.Message}");
+                Log($"源失败：{errors[^1]}");
                 CleanupSidecars(dest);
+                TryDelete(dest);
             }
         }
         throw new Exception("所有更新源均失败：\n" + string.Join("\n", errors));
@@ -373,6 +400,26 @@ public static class Updater
             throw new Exception(msg);
         }
         return await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+    }
+
+    // ---- 日志 -------------------------------------------------------------
+
+    /// <summary>
+    /// 出问题时得有一处可查——静默检查失败如果只把状态条还原，事后什么都查不到。
+    /// 写在 %APPDATA%\MDReader\update.log，纯文本、可直接删，超过 200KB 自己截断。
+    /// </summary>
+    public static void Log(string line)
+    {
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MDReader");
+            Directory.CreateDirectory(dir);
+            var p = Path.Combine(dir, "update.log");
+            if (new FileInfo(p).Exists && new FileInfo(p).Length > 200_000)
+                File.WriteAllText(p, "（旧日志已截断）\n");
+            File.AppendAllText(p, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {line}\n");
+        }
+        catch (Exception) { /* 日志写不下不影响功能 */ }
     }
 
     // ---- 其它 ------------------------------------------------------------

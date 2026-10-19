@@ -33,6 +33,7 @@ public static class SelfReplace
             WindowStyle = ProcessWindowStyle.Hidden,
         };
         Process.Start(psi);
+        Updater.Log($"已交给 helper.bat 覆盖重启：zip={zipPath} appDir={appDir}");
         return bat;
     }
 

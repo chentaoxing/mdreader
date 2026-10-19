@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Net;
+using System.IO;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace MdFileAssistant.Shell;
 
@@ -121,4 +123,14 @@ public static class NetGuard
     }
 
     private static string Trim(string s) => s.Length <= 80 ? s : s[..80] + "…";
+
+    /// <summary>
+    /// 这台机器的代理会随机抖：同一段时间里 curl 报 exit 35、git 报 schannel 握手失败、
+    /// gh 报 EOF、应用里报 "The SSL connection could not be established"。
+    /// 传输层失败（不是 HTTP 状态码）要当成可重试的——否则一次抖动就变成"静默检查没发现更新"，
+    /// 用户看到的永远是"没有新版"，既不是事实也无从追查。
+    /// </summary>
+    public static bool IsTransient(Exception e) =>
+        e is HttpRequestException or System.Net.Sockets.SocketException or TaskCanceledException or IOException
+        || e.InnerException is HttpRequestException or System.Net.Sockets.SocketException;
 }
