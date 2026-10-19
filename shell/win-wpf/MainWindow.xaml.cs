@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using MdFileAssistant.Native;
 using MdFileAssistant.Reading;
@@ -35,11 +36,23 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settings = Settings.Load();
         ApplyModeRadio(_settings.Mode);
+        ApplyThemeRadio(_settings.Theme);
         CmbType.ItemsSource = TypeScales.Select(t => t.Name).ToList();
         var tw = Array.FindIndex(TypeScales, t => t.Name == _settings.Type);
         CmbType.SelectedIndex = tw >= 0 ? tw : 1;
         ApplyView(_settings.View == "专心读");
+        ChkAuto.IsChecked = _settings.AutoCheck;
         _ready = true;
+        // 主题变了要重画阅读视图：FlowDocument 的颜色是渲染当时定下来的，不会自己跟着变
+        Theme.ThemeManager.Reapplied += OnThemeReapplied;
+
+        if (_settings.AutoCheck)
+        {
+            // 启动 3 秒后才查，且只在"确实有新版"时出声——不打扰正在读的东西
+            var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            t.Tick += (_, _) => { t.Stop(); _ = CheckUpdateAsync(silent: true); };
+            t.Start();
+        }
 
         if (!MdCore.Available)
         {
@@ -64,6 +77,37 @@ public partial class MainWindow : Window
             case nameof(ReadingMode.Hidden): MHide.IsChecked = true; break;
             default: MDim.IsChecked = true; break;
         }
+    }
+
+    private void ApplyThemeRadio(string theme)
+    {
+        switch (theme)
+        {
+            case "浅色": TLight.IsChecked = true; break;
+            case "深色": TDark.IsChecked = true; break;
+            default: TFollow.IsChecked = true; break;
+        }
+    }
+
+    private string ThemeChoice => TDark.IsChecked == true ? "深色"
+                              : TLight.IsChecked == true ? "浅色" : "跟随系统";
+
+    private void OnThemeChanged(object s, RoutedEventArgs e)
+    {
+        // 注意：XAML 解析到 IsChecked="True" 时就会触发这里，那一刻 TLight/TDark 还没被创建，
+        // 读它们会 NullReference（第一次真启动就是这么崩的）。_ready 之前一律不动作：
+        // 主题在 App.OnStartup 里已经按设置应用过一次了。
+        if (!_ready) return;
+        _settings.Theme = ThemeChoice;
+        _settings.Save();
+        Theme.ThemeManager.Apply(ThemeChoice);
+    }
+
+    private void OnThemeReapplied()
+    {
+        if (!_ready) return;
+        Show();
+        if (_original.Length > 0) SayScore();
     }
 
     private string Preset => CmbPreset.SelectedItem as string ?? "通用文章";
@@ -222,12 +266,12 @@ public partial class MainWindow : Window
                 Height = 9,
                 Margin = new Thickness(6, 0, 6, 0),
                 CornerRadius = new CornerRadius(4),
-                Background = new SolidColorBrush(Color.FromRgb(0xEE, 0xF1, 0xF5)),
+                Background = Theme.ThemeManager.Brush("BarTrack"),
                 Child = new Border
                 {
                     Width = 0,
                     CornerRadius = new CornerRadius(4),
-                    Background = new SolidColorBrush(after >= before ? Color.FromRgb(0x0B, 0x3B, 0x5C) : Color.FromRgb(0xC0, 0x5A, 0x3C)),
+                    Background = after >= before ? Theme.ThemeManager.Brush("TextInk") : Theme.ThemeManager.Brush("StatusBad"),
                     HorizontalAlignment = HorizontalAlignment.Left,
                 },
             };
@@ -236,7 +280,7 @@ public partial class MainWindow : Window
             {
                 Text = $"{before} → {after}",
                 FontSize = 12.5,
-                Foreground = after >= before ? Brushes.DarkSlateGray : Brushes.Firebrick,
+                Foreground = after >= before ? Theme.ThemeManager.Brush("TextMuted") : Theme.ThemeManager.Brush("StatusBad"),
                 VerticalAlignment = VerticalAlignment.Center,
             };
             Grid.SetColumn(t, 0); Grid.SetColumn(bar, 1); Grid.SetColumn(v, 2);
@@ -368,6 +412,79 @@ public partial class MainWindow : Window
         MessageBox.Show(this, report + "\n\n（Windows 的「默认应用」只能由你亲手在系统设置里点，程序不能代劳。）",
             "MD文档阅读助手", MessageBoxButton.OK, MessageBoxImage.Information);
         FileAssociation.OpenSystemDefaults();
+    }
+
+    // ---- 自更新 ----------------------------------------------------------
+
+    private void OnAutoChanged(object s, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        _settings.AutoCheck = ChkAuto.IsChecked == true;
+        _settings.Save();
+        LblStatus.Text = _settings.AutoCheck
+            ? "已开启启动时检查更新。这是本程序唯一的出网行为，只查版本号、不上传任何内容。"
+            : "已关闭启动时检查更新。以后要更新，点右上角「检查更新」。";
+    }
+
+    private void OnCheckUpdate(object s, RoutedEventArgs e) => _ = CheckUpdateAsync(silent: false);
+
+    private bool _checking;
+
+    private async Task CheckUpdateAsync(bool silent)
+    {
+        if (_checking) return;
+        _checking = true;
+        BtnUpdate.IsEnabled = false;
+        var before = LblStatus.Text;
+        if (!silent) LblStatus.Text = "正在检查更新（只访问 GitHub 的发布页，不上传任何内容）…";
+        Updater.CheckResult r;
+        try { r = await Updater.CheckAsync(); }
+        finally { BtnUpdate.IsEnabled = true; _checking = false; }
+
+        if (!r.Ok)
+        {
+            if (silent) LblStatus.Text = before;
+            else MessageBox.Show(this, "检查更新没成功：" + r.Error, "MD文档阅读助手");
+            return;
+        }
+        if (!r.Available)
+        {
+            if (!silent) LblStatus.Text = $"已经是最新版 v{r.Current}（检查走的是{r.ProxyNote}）";
+            return;
+        }
+
+        if (silent)
+        {
+            // 静默档不打扰：把话留在按钮和状态条上，他自己决定什么时候点
+            BtnUpdate.Content = $"有新版本 v{r.Latest}";
+            LblStatus.Text = $"发现新版本 v{r.Latest}（当前 v{r.Current}）· 点右上角「检查更新」下载 · 检查走的是{r.ProxyNote}";
+            return;
+        }
+
+        var ask = MessageBox.Show(this,
+            $"发现新版本 v{r.Latest}（当前 v{r.Current}）。\n更新包：{r.AssetName ?? "（没找到 zip，只能打开发布页）"}\n\n" +
+            "要现在下载并安装吗？\n下载完会关掉本程序、覆盖安装目录、然后自动重新打开；\n" +
+            "这一步只覆盖程序自己的文件，不碰你的 .md。",
+            "MD文档阅读助手", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (ask != MessageBoxResult.Yes) return;
+
+        var prog = new Progress<string>(t => LblStatus.Text = "下载更新包 " + t);
+        string zip;
+        try
+        {
+            zip = await Updater.DownloadAndResolveAsync(r, prog);
+        }
+        catch (Exception e)
+        {
+            LblStatus.Text = "✗ 更新包没拿到：" + Updater.Friendly(e);
+            MessageBox.Show(this, "更新失败：\n" + Updater.Friendly(e) +
+                "\n\n也可以直接到发布页自己下载：" + $"https://github.com/{Updater.Repo}/releases/latest",
+                "MD文档阅读助手");
+            return;
+        }
+        LblStatus.Text = "✓ 更新包已下载并校验，正在交给安装脚本…";
+        SelfReplace.InstallAndRestart(zip);
+        Application.Current.Shutdown();     // 退出后 helper.bat 才继续覆盖
     }
 }
 

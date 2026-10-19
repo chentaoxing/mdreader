@@ -22,6 +22,17 @@
   引用块、代码块、表格在隐藏档画成真表格、任务项渲染成 ☑ / ☐、front matter 收成元信息块。
 - **编码层**（`shell/win-wpf/Shell/TextDecode.cs`，只在内存里）：GBK / GB18030 / UTF-16 的老 .md
   能打开来读；核心仍然只吃 UTF-8，原文件字节不动，另存写出的会是 UTF-8 新文件。
+- **明暗主题**（`Theme/ThemeManager.cs`）：颜色只在这一处定义（两张语义色表），XAML 走 `DynamicResource`，
+  阅读视图渲染当时取色。三档「跟随系统 / 浅色 / 深色」，跟随档读 `AppsUseLightTheme` 并订阅
+  `SystemEvents.UserPreferenceChanged`——系统切夜间模式时窗口即时跟着变，不需要重启。
+- **自更新**（`Shell/NetGuard.cs` + `Shell/Updater.cs` + `Shell/SelfReplace.cs`）：发布物是
+  `mdreader-<版本>-portable.zip`（自包含、解压即用），更新 = 解压覆盖应用目录，不出安装包。
+  出网只走 https + 主机白名单 + 解析 IP 拒绝内网/回环/链路本地/CGNAT/保留段，重定向逐跳再校验；
+  检查双路线（`releases/latest` → `releases.atom` → `expanded_assets`）；下载先 `Range: bytes=0-0` 探测，
+  认就 4 路分块并行，15 秒窗口零进度判停滞、不足 15MB 判龟速并换下一个候选源；
+  落盘只进 `%TEMP%\MDReader-Update`；覆盖交给 `helper.bat`（等进程退出 → xcopy → 确认新版 exe 在 →
+  拉起 → 自删），每步写 `helper.log`。顶栏「检查更新」手动触发，「启动时检查」默认开、可一键关——
+  **这是本程序唯一的出网行为**，README 里"离线"那句已按这个事实改写。
 - **验收资产**：`tools/ffi-acceptance/`（真实 C 客户端，Linux 与 Windows 两侧都跑过）、
   `tools/probes/`（全角空格、`+++`、`***`、多行 setext、`$$` 公式、NUL、CRLF/BOM 逐字节还原等边界探针）、
   `tests/corpus/` 33 份语料 + 金样 `GOLDEN.csv` + `fingerprint` 逐字节基线。

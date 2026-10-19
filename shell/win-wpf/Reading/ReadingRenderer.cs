@@ -31,22 +31,23 @@ public static class ReadingRenderer
     private static readonly FontFamily TextFam = new("Microsoft YaHei UI, Segoe UI");
     private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Courier New");
 
-    private static readonly Brush BodyInk = Frozen(Color.FromRgb(0x22, 0x29, 0x2F));
-    private static readonly Brush HeadInk = Frozen(Color.FromRgb(0x0B, 0x3B, 0x5C));
-    private static readonly Brush MarkupBrush = Frozen(Color.FromRgb(0xAE, 0xB4, 0xBD));
-    private static readonly Brush MetaBrush = Frozen(Color.FromRgb(0x8A, 0x90, 0x99));
-    private static readonly Brush CodeInk = Frozen(Color.FromRgb(0x14, 0x4A, 0x6E));
-    private static readonly Brush CodeBack = Frozen(Color.FromRgb(0xF2, 0xF5, 0xF8));
-    private static readonly Brush QuoteInk = Frozen(Color.FromRgb(0x45, 0x52, 0x5C));
-    private static readonly Brush QuoteBack = Frozen(Color.FromRgb(0xF7, 0xF9, 0xFB));
-    private static readonly Brush QuoteBar = Frozen(Color.FromRgb(0xC3, 0xD2, 0xE0));
-    private static readonly Brush LineBrush = Frozen(Color.FromRgb(0xD8, 0xDE, 0xE6));
-    private static readonly Brush CellHead = Frozen(Color.FromRgb(0xEE, 0xF3, 0xF7));
-    private static readonly Brush CellAlt = Frozen(Color.FromRgb(0xFA, 0xFB, 0xFD));
-    private static readonly Brush CellLine = Frozen(Color.FromRgb(0xDD, 0xE3, 0xE9));
-    private static readonly Brush LinkInk = Frozen(Color.FromRgb(0x14, 0x53, 0x2D));
-
-    private static SolidColorBrush Frozen(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+    // 颜色一律从主题取（渲染当时取，所以切主题后重画就换新色）。
+    // 这里绝不写死色值——否则深色模式下会出现"白底黑字的一块"。
+    private static SolidColorBrush BodyInk => Theme.ThemeManager.Brush("TextPrimary");
+    private static SolidColorBrush HeadInk => Theme.ThemeManager.Brush("TextInk");
+    private static SolidColorBrush MarkupBrush => Theme.ThemeManager.Brush("Markup");
+    private static SolidColorBrush MetaBrush => Theme.ThemeManager.Brush("Meta");
+    private static SolidColorBrush CodeInk => Theme.ThemeManager.Brush("CodeInk");
+    private static SolidColorBrush CodeBack => Theme.ThemeManager.Brush("CodeBg");
+    private static SolidColorBrush QuoteInk => Theme.ThemeManager.Brush("QuoteInk");
+    private static SolidColorBrush QuoteBack => Theme.ThemeManager.Brush("QuoteBg");
+    private static SolidColorBrush QuoteBar => Theme.ThemeManager.Brush("QuoteBar");
+    private static SolidColorBrush LineBrush => Theme.ThemeManager.Brush("Rule");
+    private static SolidColorBrush CellHead => Theme.ThemeManager.Brush("TableHead");
+    private static SolidColorBrush CellAlt => Theme.ThemeManager.Brush("TableRowAlt");
+    private static SolidColorBrush CellLine => Theme.ThemeManager.Brush("TableBorder");
+    private static SolidColorBrush PanelBack => Theme.ThemeManager.Brush("PanelBg");
+    private static SolidColorBrush LinkInk => Theme.ThemeManager.Brush("LinkInk");
 
     private enum Kind { Para, Head, Quote, Item, Code, Table, Rule, Meta }
 
@@ -503,7 +504,7 @@ public static class ReadingRenderer
                 if (txt.Length > 0) Fill(para, txt, mode);
                 row.Cells.Add(new TableCell(para)
                 {
-                    Background = isHead ? CellHead : index % 2 == 1 ? CellAlt : Brushes.White,
+                    Background = isHead ? CellHead : index % 2 == 1 ? CellAlt : PanelBack,
                     BorderBrush = CellLine,
                     BorderThickness = new Thickness(0, 0, 1, 1),
                     Padding = new Thickness(9, 5, 9, 5),

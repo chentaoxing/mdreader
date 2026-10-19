@@ -66,6 +66,58 @@ bin/Release/net10.0-windows/MdFileAssistant.exe 某个文件.md
 完全相同（`284810…085`），都是 6 处结构变化、正文变化 0；带 NUL 的伪 PNG 与无 BOM 的 UTF-16LE
 都被干净拒读，文件未被改写。
 
+## 明暗主题（`Theme/ThemeManager.cs`）
+
+颜色**只在这一处定义**：`Light` / `Dark` 两张语义色表（`WindowBg`、`TextPrimary`、`Markup`、`CodeBg`、
+`TableBorder`…），XAML 全部走 `DynamicResource`，阅读视图渲染当时取色。所以不会出现"某块忘改还是白的"。
+
+三档：跟随系统（默认）/ 浅色 / 深色。跟随档读 `HKCU\...\Themes\Personalize\AppsUseLightTheme`
+并订阅 `SystemEvents.UserPreferenceChanged`——在 Windows 设置里切夜间模式，窗口当场跟着变，不用重启。
+选择存 `settings.json`。
+
+两个只有真点界面才暴露的坑：
+
+1. **XAML 里的 `IsChecked="True"` 会在解析阶段就触发 `Checked`**，那一刻同组其它控件的字段还是 null，
+   处理器里读它们直接 `NullReferenceException`——第一次真启动就是这么崩的。所有 `Checked` /
+   `SelectionChanged` 处理器一律先 `if (!_ready) return;`。
+2. **ComboBox 用默认主题模板时，选中区底色写死在主题资源里**，只设 `Background`/`Foreground`
+   会得到"白底 + 浅灰字"，深色模式下等于看不见（截图确认后才修）。解法是自带一个极简模板，
+   底色直接吃 `FieldBg`。TabItem 同理，默认模板自带浅色渐变。
+
+## 自更新（`Shell/NetGuard.cs` + `Shell/Updater.cs` + `Shell/SelfReplace.cs`）
+
+发布形态照 ChinaSeal：**portable zip**（`mdreader-<版本>-portable.zip`，自包含、解压即用），
+更新 = 解压覆盖应用目录，不出安装包。仓库 `chentaoxing/mdreader`，换仓只改 `Updater.Repo` 一行。
+
+四条护栏，逐条对应 ChinaSeal 那套真机踩过坑的实现：
+
+- **出网闸门**：只允许 https；主机必须在白名单；解析出来的 IP 落在内网 / 回环 / 链路本地 /
+  CGNAT / 保留段一律拒绝（防"白名单被 DNS 指到 169.254.169.254"这类 SSRF）；
+  **重定向逐跳再校验一遍**，不然一个 302 就绕过白名单了。
+- **检查双路线**：`api.github.com/.../releases/latest` 优先；403 限流或异常时回退
+  `releases.atom`（不占 API 配额），再抓 `expanded_assets/<tag>` 找直链。
+  匿名配额是按出口 IP 算的，走代理时很容易吃 403——所以两条路都得在。
+- **下载**：先用 `Range: bytes=0-0` 探测总长与是否支持分块，支持就 4 路并行写各自 `.part{i}.tmp` 再合并；
+  15 秒窗口内零进度判停滞、不足 15MB 判龟速并**换下一个候选源**（最后一个源容忍磨完）。
+  国内网络下 GitHub 常是"连得上但磨"，这条决定能不能更新成功。
+- **落盘边界**：只准写 `%TEMP%\MDReader-Update`；文件名取 basename + 字符白名单 + 目录 containment，防路径穿越；
+  尺寸下限与 `Content-Length` 双重校验，对不上就删掉重来。
+
+覆盖动作交给 `helper.bat`（Windows 锁着正在运行的 exe，进程内改不掉自己）：解压到暂存 →
+等本进程退出 → `xcopy` 覆盖 → **确认新版 exe 真的解出来了**才继续 → 清理 → 拉起新版 → 自删。
+每一步都往 `helper.log` 里写，出问题时有一处可查。ChinaSeal 的 0.4.20 修的就是
+"点了安装、软件退出、然后没有然后"，这个坑不必再踩一遍。
+
+**bat 正文必须纯 ASCII**：这台机器上应用目录常含中文，中文路径写进 .bat 会被 cmd.exe 按 OEM 码页读坏；
+改成用**参数**传进去（命令行是 UTF-16 进来的），bat 本体一个汉字都没有。
+
+token 只从 `GH_TOKEN` / `GITHUB_TOKEN` 或 `%APPDATA%\MDReader\github-token.txt` 读，
+绝不去翻别的工具的凭据。
+
+**触发方式**：顶栏「检查更新」按钮。「启动时检查」默认开（照 ChinaSeal），启动 3 秒后静默查一次，
+只在真有新版时把按钮变成「有新版本 vX」并在状态条留话，不打扰正在读的东西；
+取消勾选后只有手动点才联网。**这是本程序唯一的出网行为**——README 里"离线"那句已按这个事实改写。
+
 ## 逐条接受 / 拒绝
 
 改动清单里取消勾选某条规则，即调 `mdfile_rebuild` 重建，右栏与状态条实时跟着变。

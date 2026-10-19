@@ -14,6 +14,13 @@ public sealed class Settings
     public string Mode { get; set; } = "Hidden";
     public string Type { get; set; } = "标准";
     public string View { get; set; } = "对比源文件";
+    public string Theme { get; set; } = "跟随系统";
+
+    /// <summary>
+    /// 启动 3 秒后静默查一次更新（照 ChinaSeal 的做法，默认开）。
+    /// 这是本程序唯一的出网行为，取消勾选「启动时检查」后就只手动查。
+    /// </summary>
+    public bool AutoCheck { get; set; } = true;
 
     private static string Path2 => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MdFileAssistant", "settings.json");
