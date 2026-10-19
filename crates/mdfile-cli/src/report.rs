@@ -101,7 +101,7 @@ pub fn render(
 
     format!(
         "<!doctype html>\n<html lang=zh><head><meta charset=utf-8>\n\
-         <title>MD 文件助手 · {title}</title>\n<style>{css}</style></head>\n\
+         <title>MD文档阅读助手 · {title}</title>\n<style>{css}</style></head>\n\
          <body>\n<h1>{title}</h1>\n<p class=sub>预设 {preset} · 引擎 {ver} · 收敛轮次 {passes}</p>\n\
          <p>{badge} <span class=chip>结构变化 {struct}</span></p>\n\
          <h2>阅读性评分</h2>\n<table><tr><th>维度</th><th>优化前</th><th>优化后</th><th>变化</th></tr>\n\

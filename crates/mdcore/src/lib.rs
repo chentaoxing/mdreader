@@ -1,4 +1,4 @@
-//! mdcore —— MD 文件助手的跨平台核心引擎。
+//! mdcore —— MD文档阅读助手的跨平台核心引擎。
 //!
 //! 设计约束（对应产品规格第五、六、七章）：
 //! - Core First：本 crate 不依赖任何平台 UI / 系统 API（不调用 Win32 / AppKit / UIKit /

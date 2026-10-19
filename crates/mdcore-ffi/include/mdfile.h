@@ -1,5 +1,5 @@
 /*
- * mdfile.h — MD 文件助手核心引擎 C ABI
+ * mdfile.h — MD文档阅读助手核心引擎 C ABI
  *
  * 这是五个平台唯一的功能入口（规格第十三章 Shared Core）。实际产物名由 cargo 决定，
  * lib 名为 `mdcore_ffi`，别按别的名字找：

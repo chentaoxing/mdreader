@@ -3,11 +3,11 @@ resolver = "2"
 members = ["crates/mdcore", "crates/mdcore-ffi", "crates/mdfile-cli"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.77"
 license = "MIT"
-authors = ["MD 文件助手 / mdfile"]
+authors = ["MD文档阅读助手 / mdfile"]
 repository = "https://example.invalid/mdfile-assistant"
 
 [workspace.dependencies]

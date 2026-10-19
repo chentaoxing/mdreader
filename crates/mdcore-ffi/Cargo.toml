@@ -1,6 +1,6 @@
 [package]
 name = "mdcore-ffi"
-description = "MD 文件助手核心的 C ABI 封装层：Android(Kotlin/JNI)、iOS/macOS(Swift/Objective-C)、Windows/Linux(C) 与 WASM 共用同一份导出。此 crate 只做序列化与内存管理，不含任何 Markdown 语义逻辑。"
+description = "MD文档阅读助手核心的 C ABI 封装层：Android(Kotlin/JNI)、iOS/macOS(Swift/Objective-C)、Windows/Linux(C) 与 WASM 共用同一份导出。此 crate 只做序列化与内存管理，不含任何 Markdown 语义逻辑。"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

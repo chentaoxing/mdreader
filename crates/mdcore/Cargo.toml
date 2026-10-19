@@ -1,6 +1,6 @@
 [package]
 name = "mdcore"
-description = "MD 文件助手跨平台核心引擎：Markdown AST / Document Model / Content Guard / Rule Engine / Readability / Diff。平台无关，无 UI 依赖，无网络依赖。"
+description = "MD文档阅读助手跨平台核心引擎：Markdown AST / Document Model / Content Guard / Rule Engine / Readability / Diff。平台无关，无 UI 依赖，无网络依赖。"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,4 +1,4 @@
-# mdfile fingerprint  engine=0.1.0
+# mdfile fingerprint  engine=0.1.1
 # 列：文件 | 输入正文指纹 | 优化后指纹 | 结构变化 | 正文变化 | 评分(综/标/段/列/空/密) | 规则链
 01-readme-nodejs.md a28695bf74ef4bdb:w47p10c438u3h0r0b1n942 a28695bf74ef4bdb:w47p10c438u3h0r0b1n942 0 0 89/76/82/100/100/100 -
 02-readme-rust.md aa9d41f597041214:w98p26c123u6h0r0b0n1020 aa9d41f597041214:w98p26c123u6h0r0b0n1020 0 0 88/100/55/100/100/100 -

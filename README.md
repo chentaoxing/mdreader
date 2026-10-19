@@ -346,6 +346,7 @@ mdfile-cli check tests/corpus/*.md
    转码只发生在内存里——原文件字节不动，状态条写明「现在读的是 UTF-8 副本」，另存出去的会是 UTF-8 新文件。
    实测：同一份内容的 UTF-8 / GBK / UTF-16LE 三个文件，核心算出的正文校验和完全相同（`284810…085`）。
    其余四个平台还没做这一层，中文 Windows 用户的老文件在它们上目前仍会被拒。
+7b. `fingerprint` 输出的**第一行带引擎版本号**（`# mdfile fingerprint  engine=0.1.1`），33 行数据才是要逐字节比的东西。跨版本 diff 基线时会看到这一行变动，那不是不一致；比对时要么连头一起同版本生成，要么只比数据行。
 8. 指纹依赖 `std` 的 Unicode 表（`is_whitespace` / `is_alphanumeric`）来切 token，因此**理论上也依赖工具链版本**：
    仓库没有 `rust-toolchain.toml` 固定，五平台各自的新旧 rustc 一旦 Unicode 表升级就可能漂移出「不一致」。
    本机在 rustc 1.99.0 下与云端基线逐字节一致，但这条只是「目前没出事」，不是保证。建议后续显式 pin。
