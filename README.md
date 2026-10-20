@@ -1,4 +1,4 @@
-<img src="assets/brand/icon-simple.png" alt="MD文档阅读助手" width="96" height="96" />
+<img src="assets/brand/icon-tile.png" alt="MD文档阅读助手" width="96" height="96" />
 
 # MD文档阅读助手
 
