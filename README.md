@@ -322,7 +322,8 @@ mdfile-cli check tests/corpus/*.md
 - 3.6 MB 单文件全量优化：约 3.1 秒（修复了三处 O(n²)：snippet 逐次重建行索引、
   去重的线性 `contains`、代码块上下界双搜索）。小文件 2 ms 级。
 - 行索引 `Lines` 建一次、区间查询 O(log n)；代码块判定改成 O(n) 掩码。
-- 输入上限在 FFI 层显式声明为 64 MiB（`MAX_INPUT_BYTES`），超限返回状态码而非崩溃；
+- 输入上限 64 MiB 的唯一执行点在 `mdcore::io::OpenDocument::from_bytes`（`mdfile.h` 的
+  `MDFILE_MAX_INPUT_BYTES` 引用的同一常量）；CLI 在读盘前另有大小预检。超限返回状态码而非崩溃；
   大文件应在 UI 层走后台线程 + 进度取消（`pipeline::Cancel`）。
 
 ---
@@ -348,8 +349,9 @@ mdfile-cli check tests/corpus/*.md
    其余四个平台还没做这一层，中文 Windows 用户的老文件在它们上目前仍会被拒。
 7b. `fingerprint` 输出的**第一行带引擎版本号**（`# mdfile fingerprint  engine=0.1.1`），33 行数据才是要逐字节比的东西。跨版本 diff 基线时会看到这一行变动，那不是不一致；比对时要么连头一起同版本生成，要么只比数据行。
 8. 指纹依赖 `std` 的 Unicode 表（`is_whitespace` / `is_alphanumeric`）来切 token，因此**理论上也依赖工具链版本**：
-   仓库没有 `rust-toolchain.toml` 固定，五平台各自的新旧 rustc 一旦 Unicode 表升级就可能漂移出「不一致」。
-   本机在 rustc 1.99.0 下与云端基线逐字节一致，但这条只是「目前没出事」，不是保证。建议后续显式 pin。
+   ~~仓库没有 `rust-toolchain.toml` 固定~~ —— **2026-10-24（v0.1.4）已固定 1.99.1**：
+   1.99.0（云端基线生成版本）与 1.99.1（Windows 本机）双向验证指纹逐字节一致。
+   升级 pinned 版本前必须在全部平台重跑指纹对账，绿了才允许提交。
 9. ~~Content Guard 看不见脚注引用与任务列表标记~~ —— **2026-10-19 已扩**（用户签字「扩」）：
    `tokenize()` 现在为 `[^1]`（引用与定义标签）和 `- [ ]` / `- [x]` 各发射一个 `Ref` token，
    吃掉编号或丢掉勾选状态都会当场拒绝该规则。实测代价为零改动输出：33 份语料里只有 3 份的

@@ -36,7 +36,8 @@ use mdcore::rules::{Registry, SafetyLevel};
 use mdcore::text::NewlineStyle;
 
 /// 单次调用的输入上限。移动端与桌面端同一数值，避免「某平台能处理、某平台报错」的分裂。
-pub const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
+/// 真相源在 `mdcore::io`（CLI 与四个平台壳也从那里进），这里只是对 C 侧可见的别名。
+pub const MAX_INPUT_BYTES: usize = mdcore::io::MAX_INPUT_BYTES;
 
 const STATUS_OK: i32 = 0;
 const STATUS_INVALID_UTF8: i32 = 1;
@@ -84,13 +85,11 @@ fn clear_last_error() {
 #[no_mangle]
 pub extern "C" fn mdfile_last_error() -> *mut c_char {
     let msg = LAST_ERROR.with(|c| c.borrow().clone());
-    match to_heap_cstr(&msg) {
-        Some(p) => p,
-        None => EMPTY.as_ptr() as *mut c_char,
-    }
+    // to_heap_cstr 已滤掉内部 NUL，CString::new 必然成功。若未来改动打破该前提，
+    // 宁可 abort 也不能退回静态空指针——按头文件契约 free 它就是 free 一个静态地址。
+    // （v0.1.4 之前的 EMPTY 静态回退正是这种地雷，本不可达但留着就是隐患，已删。）
+    to_heap_cstr(&msg).unwrap_or_else(|| std::process::abort())
 }
-
-static EMPTY: &[u8] = b"\0";
 
 /// 释放本层返回的字符串。传 null 是合法的空操作。
 ///
@@ -112,17 +111,27 @@ fn to_heap_cstr(s: &str) -> Option<*mut c_char> {
     std::ffi::CString::new(sanitized).ok().map(|c| c.into_raw())
 }
 
-unsafe fn read_bytes<'a>(ptr: *const u8, len: usize) -> Option<&'a [u8]> {
+/// 读输入字节，非法参数按 mdfile.h 的状态码区分：
+/// 超上限 = 2（TOO_LARGE），空指针且长度非 0 = -1（BAD_ARGS）。
+/// v0.1.4 之前 analyze/preview/rebuild 三个入口把超上限也折成 -1，
+/// 与头文件「MDFILE_ERR_TOO_LARGE 对全部入口生效」的声明分裂。
+///
+/// 空文件在 C 侧完全合法：`malloc(0)` 可能返回 NULL，Swift/Kotlin 也常传空切片的首地址。
+/// 旧实现把 (NULL, 0) 判成非法参数(-1)，而 (有效指针, 0) 判成空文档(0)，
+/// 同一份 0 字节 .md 在两个平台上得到两种结论。
+unsafe fn read_bytes_status<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], i32> {
     if len > MAX_INPUT_BYTES {
-        return None;
+        set_last_error(format!("输入超过上限 {MAX_INPUT_BYTES} 字节"));
+        return Err(STATUS_TOO_LARGE);
     }
     if ptr.is_null() {
-        // 空文件在 C 侧完全合法：`malloc(0)` 可能返回 NULL，Swift/Kotlin 也常传空切片的首地址。
-        // 旧实现把 (NULL, 0) 判成非法参数(-1)，而 (有效指针, 0) 判成空文档(0)，
-        // 同一份 0 字节 .md 在两个平台上得到两种结论。
-        return (len == 0).then_some(&[]);
+        if len == 0 {
+            return Ok(&[]);
+        }
+        set_last_error("输入指针为空且长度非 0");
+        return Err(STATUS_BAD_ARGS);
     }
-    Some(unsafe { std::slice::from_raw_parts(ptr, len) })
+    Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
 }
 
 unsafe fn read_cstr<'a>(ptr: *const c_char, default: &'a str) -> Result<&'a str, ()> {
@@ -251,18 +260,7 @@ pub unsafe extern "C" fn mdfile_optimize(
     out_len: *mut usize,
 ) -> i32 {
     guard_call(out_json, out_len, || {
-        let bytes = unsafe { read_bytes(input, input_len) }.ok_or_else(|| {
-            set_last_error(if input_len > MAX_INPUT_BYTES {
-                format!("输入超过上限 {MAX_INPUT_BYTES} 字节")
-            } else {
-                "输入指针为空".into()
-            });
-            if input_len > MAX_INPUT_BYTES {
-                STATUS_TOO_LARGE
-            } else {
-                STATUS_BAD_ARGS
-            }
-        })?;
+        let bytes = unsafe { read_bytes_status(input, input_len) }?;
         let preset_name = unsafe { read_cstr(preset, presets::GENERIC) }.map_err(|_| {
             set_last_error("预设名不是合法 UTF-8");
             STATUS_INVALID_UTF8
@@ -272,10 +270,16 @@ pub unsafe extern "C" fn mdfile_optimize(
             STATUS_INVALID_UTF8
         })?;
         let style = match nl_name {
+            "preserve" | "" => NewlineStyle::Preserve, // 空串=无偏好，与 NULL 同义；无法是 lf/crlf/cr 的拼错
             "lf" => NewlineStyle::Lf,
             "crlf" => NewlineStyle::CrLf,
             "cr" => NewlineStyle::Cr,
-            _ => NewlineStyle::Preserve,
+            other => {
+                // v0.1.4 之前未知值静默当 preserve：五个平台各自拼错会得到静默不同的结果，
+                // 与「同输入同输出」的承诺相悖（CLI 对等价输入一直是报错退出）。
+                set_last_error(format!("未知换行风格「{other}」，可选：preserve / lf / crlf / cr"));
+                return Err(STATUS_UNKNOWN);
+            }
         };
         let profile = presets::profile_for(preset_name).ok_or_else(|| {
             set_last_error(format!(
@@ -365,10 +369,7 @@ pub unsafe extern "C" fn mdfile_analyze(
     out_len: *mut usize,
 ) -> i32 {
     guard_call(out_json, out_len, || {
-        let bytes = unsafe { read_bytes(input, input_len) }.ok_or_else(|| {
-            set_last_error(if input_len > MAX_INPUT_BYTES { "输入超过上限" } else { "输入指针为空且长度非 0" });
-            STATUS_BAD_ARGS
-        })?;
+        let bytes = unsafe { read_bytes_status(input, input_len) }?;
         let preset_name = unsafe { read_cstr(preset, presets::GENERIC) }.map_err(|_| {
             set_last_error("预设名不是合法 UTF-8");
             STATUS_INVALID_UTF8
@@ -499,10 +500,7 @@ pub unsafe extern "C" fn mdfile_preview(
     out_len: *mut usize,
 ) -> i32 {
     guard_call(out_json, out_len, || {
-        let bytes = unsafe { read_bytes(input, input_len) }.ok_or_else(|| {
-            set_last_error(if input_len > MAX_INPUT_BYTES { "输入超过上限" } else { "输入指针为空且长度非 0" });
-            STATUS_BAD_ARGS
-        })?;
+        let bytes = unsafe { read_bytes_status(input, input_len) }?;
         let preset_name = unsafe { read_cstr(preset, presets::GENERIC) }.map_err(|_| {
             set_last_error("预设名不是合法 UTF-8");
             STATUS_INVALID_UTF8
@@ -580,7 +578,7 @@ pub unsafe extern "C" fn mdfile_rebuild(
     out_len: *mut usize,
 ) -> i32 {
     guard_call(out_json, out_len, || {
-        let bytes = unsafe { read_bytes(original, original_len) }.ok_or(STATUS_BAD_ARGS)?;
+        let bytes = unsafe { read_bytes_status(original, original_len) }?;
         let preset_name = unsafe { read_cstr(preset, presets::GENERIC) }.map_err(|_| {
             set_last_error("预设名不是合法 UTF-8");
             STATUS_INVALID_UTF8
@@ -636,7 +634,13 @@ pub unsafe extern "C" fn mdfile_rebuild(
         }
         let body = log.rebuild(text, &outcome, &registry, &profile).map_err(|e| {
             set_last_error(format!("{e}"));
-            STATUS_GUARD_REJECTED
+            match e {
+                mdcore::CoreError::GuardRejected { .. } => STATUS_GUARD_REJECTED,
+                mdcore::CoreError::TooLarge { .. } => STATUS_TOO_LARGE,
+                // v0.1.4 之前所有错误一律折成 GUARD(3)，内部缺陷（如 OverlappingEdits）
+                // 被报成「正文发生变化，调用方必须放弃」，语义错位；那类情况应是 5。
+                _ => STATUS_PANIC,
+            }
         })?;
         // content_changes 必须**算出来**：旧实现写死 0，而 mdfile.h 把「正文变化 0」
         // 当成 UI 允许落盘的凭据，等于让一个常量给改动背书。
@@ -878,6 +882,41 @@ mod tests {
             mdfile_optimize(std::ptr::null(), len, std::ptr::null(), std::ptr::null(), &mut out, &mut ol)
         };
         assert_eq!(code, STATUS_TOO_LARGE);
+    }
+
+    #[test]
+    fn oversized_input_rejected_on_all_entrypoints() {
+        // 回归（v0.1.4）：analyze/preview/rebuild 旧实现把超上限折成 BAD_ARGS(-1)，
+        // 与 mdfile.h「MDFILE_ERR_TOO_LARGE 对全部入口生效」的声明分裂。
+        let len = MAX_INPUT_BYTES + 1;
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut ol = 0usize;
+        let a = unsafe { mdfile_analyze(std::ptr::null(), len, std::ptr::null(), &mut out, &mut ol) };
+        let p = unsafe { mdfile_preview(std::ptr::null(), len, std::ptr::null(), std::ptr::null(), &mut out, &mut ol) };
+        let r = unsafe {
+            mdfile_rebuild(std::ptr::null(), len, std::ptr::null(), std::ptr::null(), &mut out, &mut ol)
+        };
+        assert_eq!((a, p, r), (STATUS_TOO_LARGE, STATUS_TOO_LARGE, STATUS_TOO_LARGE));
+        // rebuild 旧实现这条路径连 last_error 都不设置
+        let msg = take_last_error();
+        assert!(!msg.is_empty(), "超限必须有可读错误消息，得到：{msg:?}");
+    }
+
+    #[test]
+    fn unknown_newline_value_is_rejected_not_swallowed() {
+        // 回归（v0.1.4）：拼错的换行风格（如 clrf）旧实现静默当 preserve，
+        // 五个平台各自拼错会得到静默不同的结果。
+        let src = "# A\n\n正文\n".as_bytes();
+        let bad = std::ffi::CString::new("clrf").unwrap();
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut l = 0usize;
+        let code = unsafe { mdfile_optimize(src.as_ptr(), src.len(), std::ptr::null(), bad.as_ptr(), &mut out, &mut l) };
+        assert_eq!(code, STATUS_UNKNOWN, "err={}", take_last_error());
+        assert!(take_last_error().contains("clrf"), "错误消息应指出拼错的值");
+        // 合法值不受影响
+        let good = std::ffi::CString::new("crlf").unwrap();
+        let code2 = unsafe { mdfile_optimize(src.as_ptr(), src.len(), std::ptr::null(), good.as_ptr(), &mut out, &mut l) };
+        assert_eq!(code2, STATUS_OK, "err={}", take_last_error());
     }
 
     #[test]

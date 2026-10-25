@@ -194,6 +194,10 @@ public static class Updater
         {
             NetGuard.Validate(current);
             using var req = new HttpRequestMessage(HttpMethod.Get, current);
+            // v0.1.4：Friendly() 一直指引用户放 github-token.txt 解决 403 限流，
+            // 但请求头从来没带上过它——承诺落空。只对 api.github.com 附加。
+            if (current.Contains("api.github.com", StringComparison.OrdinalIgnoreCase) && ReadToken() is { } tok)
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", tok);
             if (hop > 0) req.Headers.Remove("Accept");     // 重定向后按 GitHub 页面走，不再声明 API 媒体类型
             var remain = timeout - until.Elapsed;
             if (remain <= TimeSpan.Zero) throw new TaskCanceledException($"超时（>{timeout.TotalSeconds:F0}s）");

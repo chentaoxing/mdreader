@@ -76,7 +76,18 @@ public static class ReadingRenderer
         {
             doc.Blocks.Add(new Paragraph(new Run($"（超过 {MaxRichChars / 1000} 千字符，阅读视图降级为纯文本以免卡顿；文件本身一个字节都没动）"))
             { Foreground = MetaBrush, FontStyle = FontStyles.Italic, FontSize = Px(13, sc), Margin = new Thickness(0, 0, 0, 12) });
-            doc.Blocks.Add(new Paragraph(new Run(text)) { FontSize = Px(14, sc), Margin = new Thickness(0) });
+            // v0.1.4：Run 内的 U+000A 在 FlowDocument 里不成行，旧实现把整篇塞进一个 Run，
+            // 超 80 万字符的文件在降级档糊成一段。按行拆成 Run + LineBreak。
+            var p = new Paragraph { FontSize = Px(14, sc), Margin = new Thickness(0) };
+            var first = true;
+            foreach (var line in text.Split('\n'))
+            {
+                var l = line.TrimEnd('\r');
+                if (!first) p.Inlines.Add(new LineBreak());
+                if (l.Length > 0) p.Inlines.Add(new Run(l));
+                first = false;
+            }
+            doc.Blocks.Add(p);
             return doc;
         }
 

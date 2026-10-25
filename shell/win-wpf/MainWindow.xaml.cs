@@ -128,6 +128,13 @@ public partial class MainWindow : Window
 
     private void OnDrop(object s, DragEventArgs e)
     {
+        // v0.1.4：DLL 缺失的降级态只禁了按钮，拖放仍会走进 OpenFile→Run→MdCore，
+        // DllNotFoundException 没人接就是崩溃。这里先拦一道。
+        if (!MdCore.Available)
+        {
+            LblStatus.Text = "找不到 mdcore_ffi.dll —— 排版判定全部来自它，缺了就没有任何功能可做。请把它放在程序同目录。";
+            return;
+        }
         if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files) OpenFile(files[0]);
     }
 
@@ -165,7 +172,10 @@ public partial class MainWindow : Window
         LblSrcMeta.Text = $"{bytes.Length:N0} 字节 · {dec.Label} · {nl}" +
                           (bytes.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }) ? " · 有 BOM" : "");
         if (_transcoded)
-            LblStatus.Text = $"这份文件是 {dec.Label}。显示与优化都在内存里的 UTF-8 副本上做，原文件一个字节都不动；另存出去的会是 UTF-8 新文件。";
+            LblStatus.Text = $"这份文件是 {dec.Label}。显示与优化都在内存里的 UTF-8 副本上做，原文件一个字节都不动；另存出去的会是 UTF-8 新文件。"
+                + (dec.Label.Contains("GB")
+                    ? "（无 BOM 文件是按内容猜的编码，若显示乱码请人工确认原编码）"
+                    : "");
 
         Run();
     }
@@ -181,7 +191,19 @@ public partial class MainWindow : Window
 
     private void Run()
     {
-        if (_coreBytes.Length == 0) return;
+        if (_coreBytes.Length == 0)
+        {
+            // v0.1.4：空文件是一个独立状态。旧实现直接 return，上一份文件的优化结果与
+            // 可点的「另存为」原样残留——打开 A 再打开空文件 B 后点另存，会写出
+            // 「B_阅读优化版.md」但内容是 A 的优化结果。这里清干净。
+            _rows = new List<RuleRow>();
+            GridRules.ItemsSource = null;
+            BtnSave.IsEnabled = false;
+            ViewSrc.Text = _srcText;
+            ViewOut.Document = ReadingRenderer.RenderReading("", Mode, Scale);
+            LblOutMeta.Text = "";
+            return;
+        }
         _result = MdCore.Optimize(_coreBytes, Preset, "preserve");
         if (!_result.Ok)
         {
@@ -362,6 +384,7 @@ public partial class MainWindow : Window
 
     private void OnSave(object s, RoutedEventArgs e)
     {
+        if (_coreBytes.Length == 0) return; // v0.1.4：没有已加载的正文可保存（空文件态）
         if (!_result.Ok || !_result.ContentUntouched)
         {
             MessageBox.Show(this, "正文内容发生了变化，这个结果不允许保存。", "MD文档阅读助手");
@@ -408,7 +431,11 @@ public partial class MainWindow : Window
             return;
         }
         var report = FileAssociation.Register();
-        LblStatus.Text = report.Split('\n').First(l => l.StartsWith('✓') || l.StartsWith('✗'));
+        // v0.1.4：Register 提前失败时报告里可能一行 ✓/✗ 都没有，
+        // 旧的 .First(...) 直接抛 InvalidOperationException。
+        LblStatus.Text = report.Split('\n').FirstOrDefault(l => l.StartsWith('✓') || l.StartsWith('✗'))
+                         ?? report.Split('\n').FirstOrDefault(l => l.Trim().Length > 0)
+                         ?? "注册流程没有返回结果";
         MessageBox.Show(this, report + "\n\n（Windows 的「默认应用」只能由你亲手在系统设置里点，程序不能代劳。）",
             "MD文档阅读助手", MessageBoxButton.OK, MessageBoxImage.Information);
         FileAssociation.OpenSystemDefaults();
@@ -483,7 +510,20 @@ public partial class MainWindow : Window
             return;
         }
         LblStatus.Text = "✓ 更新包已下载并校验，正在交给安装脚本…";
-        SelfReplace.InstallAndRestart(zip);
+        // v0.1.4：helper.bat 写盘（TEMP 被清）或启动（杀软拦截）抛出的异常曾挂在
+        // 被 `_ =` 丢弃的 Task 上，状态条永远停在「正在交给安装脚本」。
+        try
+        {
+            SelfReplace.InstallAndRestart(zip);
+        }
+        catch (Exception ex)
+        {
+            LblStatus.Text = "✗ 交给安装脚本失败：" + ex.Message;
+            MessageBox.Show(this,
+                "更新没有安装成功（" + ex.Message + "）。\n\n更新包还在：" + zip +
+                "\n可以手动解压覆盖程序目录。", "MD文档阅读助手");
+            return;
+        }
         Application.Current.Shutdown();     // 退出后 helper.bat 才继续覆盖
     }
 }

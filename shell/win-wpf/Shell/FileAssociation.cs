@@ -1,6 +1,7 @@
-using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32;
 
 namespace MdFileAssistant.Shell;
 
@@ -12,44 +13,49 @@ namespace MdFileAssistant.Shell;
 ///   ① 注册 ProgID，让本程序出现在右键「打开方式」列表里；
 ///   ② 把系统设置页打开，让用户亲手点「设为默认」。
 /// 界面文案照这个说实话，不写成「已设为默认」。
+///
+/// v0.1.4：整体从「spawn reg.exe + 解析控制台输出」改为直接用 .NET Registry API——
+/// 不再有子进程（顺带消除了 reg 输出管道的死锁模式与串行 reg.exe 冻结 UI 的问题）、
+/// 不再依赖 reg.exe 的输出编码、读写的值都是强类型。撤销前的「确实指向本程序」
+/// 检查改为直接比对注册表里的字符串值；打开系统设置页改走 Win32 ShellExecuteW
+/// 且参数全为常量。
 /// </summary>
 public static class FileAssociation
 {
     public const string ProgId = "MdFileAssistant.Markdown";
-    private const string ClassesRoot = @"HKEY_CURRENT_USER\Software\Classes";
-    private const string ProgKey = ClassesRoot + @"\" + ProgId;
-    private const string OpenCmdKey = ProgKey + @"\shell\open\command";
-    private const string OpenWithProgIds =
-        @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.md\OpenWithProgids";
+    private const string ClassesSubKey = @"Software\Classes";
+    private const string ProgSubKey = ClassesSubKey + @"\" + ProgId;
+    private const string OpenCmdSubKey = ProgSubKey + @"\shell\open\command";
+    private const string OpenWithSubKey =
+        @"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.md\OpenWithProgids";
 
     private static string ExePath =>
-        Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName ?? "";
+        Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
 
     private static string BackupDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MdFileAssistant");
 
-    private static string RegExe =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "reg.exe");
+    /// <summary>旧值快照（撤销不了时人可以照它手工恢复）。只记录，不自动回写。</summary>
+    private sealed record Snapshot(bool Existed, string? OpenCommand);
 
-    /// <summary>用 ArgumentList 传参：引号由运行时按标准规则转义，不手搓字符串拼接。</summary>
-    private static (int Code, string Out) Run(params string[] args)
+    private static Snapshot ReadOpenCommand()
     {
-        var psi = new ProcessStartInfo(RegExe)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-        };
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        using var p = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 reg.exe");
-        var o = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-        p.WaitForExit(8000);
-        return (p.HasExited ? p.ExitCode : -1, o);
+        using var k = Registry.CurrentUser.OpenSubKey(OpenCmdSubKey);
+        if (k == null) return new Snapshot(false, null);
+        return new Snapshot(true, k.GetValue("") as string);
     }
 
-    public static bool IsRegistered() => Run("query", OpenCmdKey, "/v", "").Code == 0;
+    private static int CountOpenWith()
+    {
+        using var k = Registry.CurrentUser.OpenSubKey(OpenWithSubKey);
+        return k?.ValueCount ?? 0;
+    }
+
+    public static bool IsRegistered()
+    {
+        using var k = Registry.CurrentUser.OpenSubKey(OpenCmdSubKey);
+        return k?.GetValue("") is string s && s.Contains(ExePath, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>注册。返回一份人读的「写了什么 / 备份在哪 / 怎么撤销」报告。</summary>
     public static string Register()
@@ -60,31 +66,41 @@ public static class FileAssociation
             return "找不到本程序的可执行文件路径，未做任何注册。";
 
         Directory.CreateDirectory(BackupDir);
-        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-        var bakProg = Path.Combine(BackupDir, $"assoc-{stamp}-ProgID.reg");
-        var bakExt = Path.Combine(BackupDir, $"assoc-{stamp}-OpenWith.reg");
+        var stamp = DateTime.Now.ToString("yyyyMMdd-Hhmmsstt");
 
-        var b1 = Run("export", ProgKey, bakProg, "/y");
-        var b2 = Run("export", OpenWithProgIds, bakExt, "/y");
-        log.AppendLine(b1.Code == 0 ? $"已备份同名 ProgID 键 -> {bakProg}" : "此前没有同名 ProgID 键（无需备份）");
-        log.AppendLine(b2.Code == 0 ? $"已备份 .md 的 OpenWithProgids -> {bakExt}" : "此前没有 .md 的 OpenWithProgids 记录（无需备份）");
-
-        var before = CountOpenWith();
-        var steps = new (string Name, string[] Args)[]
+        // 备份旧值（若存在）：文本快照，供人手工恢复；不承诺自动回写
+        var before = ReadOpenCommand();
+        if (before.Existed && !string.IsNullOrEmpty(before.OpenCommand))
         {
-            ("ProgID 名称", new[] { "add", ProgKey, "/ve", "/d", "MD文档阅读助手", "/f" }),
-            ("图标", new[] { "add", ProgKey + @"\DefaultIcon", "/ve", "/d", $"\"{exe}\",0", "/f" }),
-            ("打开命令", new[] { "add", OpenCmdKey, "/ve", "/d", $"\"{exe}\" \"%1\"", "/f" }),
-            (".md 的打开方式列表", new[] { "add", OpenWithProgIds, "/v", ProgId, "/t", "REG_NONE", "/f" }),
-        };
-        foreach (var (name, args) in steps)
-        {
-            var (code, _) = Run(args);
-            log.AppendLine($"{(code == 0 ? "✓" : "✗")} {name}{(code == 0 ? "" : "（失败）")}");
+            var bak = Path.Combine(BackupDir, $"assoc-{stamp}-OpenCommand.txt");
+            try { File.WriteAllText(bak, before.OpenCommand, new UTF8Encoding(false)); log.AppendLine($"已备份原打开命令 -> {bak}"); }
+            catch (Exception e) { log.AppendLine($"备份原打开命令失败（{e.Message}），继续注册。"); }
         }
-        log.AppendLine($"打开方式条目数：{before} -> {CountOpenWith()}");
+        else
+        {
+            log.AppendLine("此前没有同名 ProgID 打开命令（无需备份）");
+        }
+
+        var beforeCount = CountOpenWith();
+        var steps = new (string Name, Action Write)[]
+        {
+            ("ProgID 名称", () => Registry.CurrentUser.CreateSubKey(ProgSubKey).SetValue("", "MD文档阅读助手")),
+            ("图标", () => Registry.CurrentUser.CreateSubKey(ProgSubKey + @"\DefaultIcon").SetValue("", $"\"{exe}\",0")),
+            ("打开命令", () => Registry.CurrentUser.CreateSubKey(OpenCmdSubKey).SetValue("", $"\"{exe}\" \"%1\"")),
+            (".md 的打开方式列表", () =>
+            {
+                using var k = Registry.CurrentUser.CreateSubKey(OpenWithSubKey);
+                k.SetValue(ProgId, new byte[0], RegistryValueKind.None);
+            }),
+        };
+        foreach (var (name, write) in steps)
+        {
+            try { write(); log.AppendLine($"✓ {name}"); }
+            catch (Exception e) { log.AppendLine($"✗ {name}（失败：{e.Message}）"); }
+        }
+        log.AppendLine($"打开方式条目数：{beforeCount} -> {CountOpenWith()}");
         log.AppendLine("下一步：在弹出的系统设置里，把「MD文档阅读助手」设为 .md 的默认应用（这一步只能你亲手点）。");
-        log.AppendLine($"撤销：在本程序里点同一个按钮选「撤销」，或运行 reg delete \"{ProgKey}\" /f");
+        log.AppendLine("撤销：在本程序里点同一个按钮选「撤销」。");
         return log.ToString();
     }
 
@@ -92,33 +108,47 @@ public static class FileAssociation
     public static string Unregister()
     {
         var log = new StringBuilder();
-        var (code, outp) = Run("query", OpenCmdKey, "/v", "");
-        if (code != 0) return "没有找到本程序写入的注册项，无需撤销。";
-        if (!outp.Contains(ExePath, StringComparison.OrdinalIgnoreCase))
+        var cur = ReadOpenCommand();
+        if (!cur.Existed || string.IsNullOrEmpty(cur.OpenCommand))
+            return "没有找到本程序写入的注册项，无需撤销。";
+        if (!cur.OpenCommand.Contains(ExePath, StringComparison.OrdinalIgnoreCase))
         {
             log.AppendLine("✗ 该 ProgID 的打开命令不指向本程序，为安全起见没有删除。");
-            log.AppendLine("  现值：" + outp.Split('\n').LastOrDefault(l => l.Contains("REG_SZ"))?.Trim());
+            log.AppendLine("  现值：" + cur.OpenCommand);
             return log.ToString();
         }
-        var before = CountOpenWith();
-        var d1 = Run("delete", ProgKey, "/f");
-        var d2 = Run("delete", OpenWithProgIds, "/v", ProgId, "/f");
-        log.AppendLine($"{(d1.Code == 0 ? "✓" : "✗")} 删除 ProgID 键");
-        log.AppendLine($"{(d2.Code == 0 ? "✓" : "✗")} 从 .md 打开方式列表移除");
-        log.AppendLine($"打开方式条目数：{before} -> {CountOpenWith()}");
+        var beforeCount = CountOpenWith();
+        try { Registry.CurrentUser.DeleteSubKeyTree(ProgSubKey); log.AppendLine("✓ 删除 ProgID 键"); }
+        catch (Exception e) { log.AppendLine($"✗ 删除 ProgID 键（失败：{e.Message}）"); }
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(OpenWithSubKey, writable: true);
+            k?.DeleteValue(ProgId);
+            log.AppendLine("✓ 从 .md 打开方式列表移除");
+        }
+        catch (Exception e) { log.AppendLine($"✗ 从 .md 打开方式列表移除（失败：{e.Message}）"); }
+        log.AppendLine($"打开方式条目数：{beforeCount} -> {CountOpenWith()}");
         return log.ToString();
     }
 
-    /// <summary>打开系统「默认应用」设置页——这一步程序不能代劳。</summary>
-    public static void OpenSystemDefaults()
-    {
-        try { Process.Start(new ProcessStartInfo("ms-settings:defaultapps") { UseShellExecute = true }); }
-        catch (Exception e) { Debug.WriteLine("打不开系统设置：" + e.Message); }
-    }
+    /// <summary>打开系统「默认应用」设置页——这一步程序不能代劳。参数全为常量。</summary>
+    public static void OpenSystemDefaults() =>
+        NativeExec.ShellOpen("ms-settings:defaultapps");
+}
 
-    private static int CountOpenWith()
-    {
-        var (code, outp) = Run("query", OpenWithProgIds);
-        return code != 0 ? 0 : outp.Split('\n').Count(l => l.Contains("REG_"));
-    }
+/// <summary>Win32 ShellExecuteW 的最小封装：只用于「按关联打开」常量目标与零参数启动脚本。</summary>
+internal static class NativeExec
+{
+    private const int SW_SHOWNORMAL = 1;
+    private const int SW_HIDE = 0;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr ShellExecuteW(IntPtr hwnd, string verb, string file, string? parameters,
+        string? directory, int showCmd);
+
+    public static void ShellOpen(string target) =>
+        ShellExecuteW(IntPtr.Zero, "open", target, null, null, SW_SHOWNORMAL);
+
+    public static void RunHidden(string scriptPath) =>
+        ShellExecuteW(IntPtr.Zero, "open", scriptPath, null, null, SW_HIDE);
 }

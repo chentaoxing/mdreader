@@ -45,6 +45,11 @@ struct Args {
     files: Vec<String>,
     newline: NewlineStyle,
     preset: String,
+    /// preset 是否由 `--preset`/`--preset=` 开关给出：fingerprint 用它区分
+    /// 「用户显式选的预设」与「环境变量/默认值」。v0.1.4 之前用
+    /// `raw.iter().any(|a| a == "--preset")` 事后扫描，`--preset=小说` 等号形态
+    /// 检测不到，对账会静默按错预设出结果。
+    preset_from_flag: bool,
     rule: Option<String>,
     to_stdout: bool,
     help: bool,
@@ -60,6 +65,7 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
     let mut positional: Vec<String> = Vec::new();
     let mut newline = NewlineStyle::Preserve;
     let mut preset = presets::GENERIC.to_string();
+    let mut preset_from_flag = false;
     let mut rule: Option<String> = None;
     let mut to_stdout = false;
     let mut help = false;
@@ -83,11 +89,16 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
                     "lf" => NS::Lf,
                     "crlf" => NS::CrLf,
                     "cr" => NS::Cr,
-                    "keep" => NS::Preserve,
-                    other => return Err(format!("未知的 --newline 值「{other}」，可选：keep|lf|crlf|cr")),
+                    // v0.1.4：两种形态接受集统一。此前空格形态只认 keep、
+                    // 等号形态额外认 preserve，同一语义两种拼写两种结果。
+                    "keep" | "preserve" => NS::Preserve,
+                    other => return Err(format!("未知的 --newline 值「{other}」，可选：keep|preserve|lf|crlf|cr")),
                 };
             }
-            "--preset" => preset = value(&mut i, "--preset")?,
+            "--preset" => {
+                preset = value(&mut i, "--preset")?;
+                preset_from_flag = true;
+            }
             "--rule" => rule = Some(value(&mut i, "--rule")?),
             "--stdout" => to_stdout = true,
             "--help" | "-h" => help = true,
@@ -105,7 +116,10 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
                                     o => return Err(format!("未知的 --newline 值「{o}」")),
                                 }
                             }
-                            "preset" => preset = val.to_string(),
+                            "preset" => {
+                                preset = val.to_string();
+                                preset_from_flag = true;
+                            }
                             "rule" => rule = Some(val.to_string()),
                             o => return Err(format!("未知开关 --{o}")),
                         }
@@ -124,11 +138,28 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
     // 注意：必须用 get(1..) —— 直接写 positional[1..] 在「只有开关、没有命令」时
     // 会 panic（旧实现的真实故障：`mdfile` 与 `mdfile --help` 都以 101 退出）。
     let files = positional.get(1..).map(|s| s.to_vec()).unwrap_or_default();
-    Ok(Args { cmd, files, newline, preset, rule, to_stdout, help })
+    Ok(Args { cmd, files, newline, preset, preset_from_flag, rule, to_stdout, help })
 }
 
 fn main() -> ExitCode {
-    let raw: Vec<String> = std::env::args().skip(1).collect();
+    // v0.1.4：std::env::args() 在参数含未配对代理项（Windows WTF-16）或非 UTF-8 字节
+    // （Unix）时会直接 panic（exit 101，无任何提示）。文件名可以是任意字节序列，
+    // 所以必须用 args_os()：非法 Unicode 明确报错退出 2，而不是崩溃。
+    let mut raw: Vec<String> = Vec::new();
+    let mut bad_args: Vec<String> = Vec::new();
+    for a in std::env::args_os().skip(1) {
+        match a.into_string() {
+            Ok(s) => raw.push(s),
+            Err(os) => bad_args.push(os.to_string_lossy().into_owned()),
+        }
+    }
+    if !bad_args.is_empty() {
+        eprintln!("以下参数名不是合法 Unicode，本工具无法处理（请重命名后重试）：");
+        for b in &bad_args {
+            eprintln!("  {b}");
+        }
+        return ExitCode::from(2);
+    }
     let args = match parse_args(&raw) {
         Ok(a) => a,
         Err(e) => {
@@ -160,7 +191,7 @@ fn main() -> ExitCode {
         "batch" => cmd_batch(&registry, &profile, &args.files, args.newline, &args.preset),
         "check" => cmd_check(&registry, &profile, &args.files),
         "report" => cmd_report(&registry, &profile, &args.files, args.newline, &args.preset),
-        "fingerprint" => cmd_fingerprint(&args.files, &args.preset, raw.iter().any(|a| a == "--preset")),
+        "fingerprint" => cmd_fingerprint(&args.files, &args.preset, args.preset_from_flag),
         other => {
             eprintln!("未知命令：{other}\n");
             usage();
@@ -198,9 +229,27 @@ fn usage() {
     );
 }
 
+/// 读入文件字节；超过核心上限时在读盘前就拒绝。
+/// 上限真相源是 `mdcore::io::MAX_INPUT_BYTES`（v0.1.4 起 `from_bytes` 内还有第二道
+/// 兜底，防 stat 与 read 之间文件长大的竞态）；此前 CLI 直连核心把 64 MiB 上限
+/// 整个绕过，66 MiB 的文件被照单全收（约 60 秒、数 GB 内存）。
+fn read_capped(path: &Path) -> Result<Vec<u8>, String> {
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() as usize > mdcore::io::MAX_INPUT_BYTES {
+            return Err(format!(
+                "{}: 输入超过上限 {} 字节（实际 {} 字节）",
+                path.display(),
+                mdcore::io::MAX_INPUT_BYTES,
+                meta.len()
+            ));
+        }
+    }
+    std::fs::read(path).map_err(|e| format!("{}: 读取失败 {e}", path.display()))
+}
+
 /// 读入 + 优化，全部字节级细节交给核心的两层模型。
 fn process(registry: &Registry, profile: &Profile, path: &Path, newline: NewlineStyle) -> Result<Done, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("读取失败：{e}"))?;
+    let bytes = read_capped(path)?;
     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("untitled.md").to_string();
     let doc = OpenDocument::from_bytes(&name, &bytes, newline).map_err(|e| format!("{name}: {e}"))?;
     let optimizer = mdcore::Optimizer::new(registry, profile);
@@ -212,10 +261,10 @@ fn cmd_analyze(registry: &Registry, profile: &Profile, files: &[String]) -> u8 {
     let optimizer = mdcore::Optimizer::new(registry, profile);
     for f in files {
         let path = Path::new(f);
-        let bytes = match std::fs::read(path) {
+        let bytes = match read_capped(path) {
             Ok(b) => b,
             Err(e) => {
-                eprintln!("{f}: 读取失败 {e}");
+                eprintln!("{e}");
                 return 1;
             }
         };
@@ -504,10 +553,10 @@ fn cmd_check(registry: &Registry, profile: &Profile, files: &[String]) -> u8 {
     let mut bad = 0usize;
     for f in files {
         let path = Path::new(f);
-        let bytes = match std::fs::read(path) {
+        let bytes = match read_capped(path) {
             Ok(b) => b,
             Err(e) => {
-                eprintln!("✗ {f}: 读取失败 {e}");
+                eprintln!("✗ {e}");
                 bad += 1;
                 continue;
             }
@@ -676,15 +725,24 @@ fn cmd_fingerprint(files: &[String], preset_flag: &str, preset_from_flag: bool) 
         }
     }
     paths.sort();
+    // v0.1.4：一份文件都没找到时旧实现只打表头、退出码 0——
+    // CI 的对账脚本会把「什么都没跑」当成通过（与 691-697 行修过的空跑陷阱同类）。
+    if paths.is_empty() {
+        eprintln!("fingerprint：未找到 Markdown 文件");
+        return 2;
+    }
     println!("# mdfile fingerprint  engine={}", mdcore::ENGINE_VERSION);
     println!("# 列：文件 | 输入正文指纹 | 优化后指纹 | 结构变化 | 正文变化 | 评分(综/标/段/列/空/密) | 规则链");
     let mut bad = 0usize;
     for path in &paths {
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else { continue };
-        let Ok(bytes) = std::fs::read(path) else {
-            println!("{name} READ_ERROR");
-            bad += 1;
-            continue;
+        let bytes = match read_capped(path) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("{name} READ_ERROR {e}");
+                bad += 1;
+                continue;
+            }
         };
         let doc = match OpenDocument::from_bytes(name, &bytes, NewlineStyle::Preserve) {
             Ok(d) => d,
@@ -746,12 +804,25 @@ fn fp_of(body: &str) -> String {
 }
 
 /// 递归扫描 .md/.markdown，保持深度优先 + 名称排序（确定性）。
+///
+/// v0.1.4 的两处加固：
+/// - 用 `symlink_metadata` 判型，**不跟随** junction / 符号链接目录——旧实现的
+///   `p.is_dir()` 会跟随 reparse point，目录里一个指向祖先目录的链接就足以
+///   无界递归直到栈溢出。指向文件的链接不受影响（仍按扩展名收录）。
+/// - `read_dir` 失败不再静默吞掉：无权限的子目录以前会从 batch/report 里无声消失。
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("警告：无法读取目录 {}（{e}），其中文件未被处理", dir.display());
+            return;
+        }
+    };
     let mut names: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
     names.sort();
     for p in names {
-        if p.is_dir() {
+        let Ok(meta) = std::fs::symlink_metadata(&p) else { continue };
+        if meta.is_dir() {
             let Some(n) = p.file_name().and_then(|s| s.to_str()) else { continue };
             // 不进入自身输出目录与常见版本控制目录
             if n == ".git" || n == "target" || n == "node_modules" {
@@ -842,6 +913,32 @@ mod cli_tests {
     fn cjk_filenames_stay_positional() {
         let a = parse_args(&v(&["check", "中文 文档.md"])).unwrap();
         assert_eq!(a.files, vec!["中文 文档.md".to_string()]);
+    }
+
+    #[test]
+    fn preset_from_flag_is_detected_in_both_forms() {
+        // 回归（v0.1.4）：`--preset=小说` 等号形态此前检测不到，fingerprint 的
+        // 对账会静默落到环境变量或默认预设上出结果。
+        let space = parse_args(&v(&["fingerprint", "corpus", "--preset", "小说"])).unwrap();
+        assert!(space.preset_from_flag, "空格形态必须算显式指定");
+        let eq = parse_args(&v(&["fingerprint", "corpus", "--preset=小说"])).unwrap();
+        assert!(eq.preset_from_flag, "等号形态必须算显式指定");
+        let none = parse_args(&v(&["fingerprint", "corpus"])).unwrap();
+        assert!(!none.preset_from_flag, "没给开关时不算显式指定");
+    }
+
+    #[test]
+    fn newline_acceptance_is_the_same_in_both_forms() {
+        // 回归（v0.1.4）：`--newline preserve` 空格形态此前报错、等号形态却收下。
+        for form in [v(&["check", "a.md", "--newline", "preserve"]), v(&["check", "--newline=preserve", "a.md"])] {
+            let a = parse_args(&form).unwrap();
+            assert!(matches!(a.newline, NS::Preserve), "{form:?}");
+        }
+        // keep 仍然两种形态都合法
+        assert!(parse_args(&v(&["check", "a.md", "--newline", "keep"])).is_ok());
+        // 拼错的值两种形态都必须报错
+        assert!(parse_args(&v(&["check", "a.md", "--newline", "clrf"])).is_err());
+        assert!(parse_args(&v(&["check", "--newline=clrf", "a.md"])).is_err());
     }
 }
 

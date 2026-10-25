@@ -11,12 +11,16 @@
  *
  * 边界约定：
  *   - 输入是字节数组（ptr + len），本层不做任何路径 / 权限假设；(ptr=NULL, len=0) 表示空文件
- *   - 输出是 UTF-8 JSON 字符串（本层分配），必须用 mdfile_free_string 释放
+ *   - 输出是 UTF-8 JSON 字符串（本层分配），必须用 mdfile_free_string 释放；
+ *     调用失败时 *out_json 会被本层覆写为 NULL——若两次调用复用同一变量，
+ *     上一次成功返回、尚未释放的指针会被抹掉而无法释放，请每次调用前先释放旧值
  *   - out_len 是 **JSON 文本自身的 UTF-8 字节数**，不是文件字节数；
  *     要还原文件内容请解码 rendered_latin1（latin1：第 n 个字符 -> 第 n 个字节）
  *   - 返回状态码，不返回结构体，避免各平台对齐差异造成 ABI 漂移
  *   - 核心内部 panic 会被捕获为 MDFILE_ERR_PANIC，绝不会跨 ABI 展开
  *   - 错误消息是线程本地的：与失败调用同线程读取
+ *   - MDFILE_ERR_TOO_LARGE 对全部接受输入的入口（optimize/analyze/preview/rebuild）一致生效；
+ *     newline 参数只认 "preserve"|"lf"|"crlf"|"cr"（NULL = preserve），其余值返回 MDFILE_ERR_UNKNOWN
  */
 
 #ifndef MDFILE_H
