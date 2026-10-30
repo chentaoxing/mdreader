@@ -1,0 +1,11 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# 本机路径配置
+local.properties
+
+# IDE
+.idea/
+*.iml

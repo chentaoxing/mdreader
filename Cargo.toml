@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mdcore", "crates/mdcore-ffi", "crates/mdfile-cli"]
+members = ["crates/mdcore", "crates/mdcore-ffi", "crates/mdfile-cli", "crates/mdcore-jni"]
 
 [workspace.package]
 version = "0.1.4"
