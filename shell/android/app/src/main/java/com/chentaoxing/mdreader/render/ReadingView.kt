@@ -144,15 +144,18 @@ private fun splitRow(t: String): List<String> {
 }
 
 @Composable
-fun ReadingView(body: String, modifier: Modifier = Modifier) {
+fun ReadingView(body: String, modifier: Modifier = Modifier, mode: SymbolMode = SymbolMode.Dim) {
     val blocks = parseBlocks(body)
     val mono = FontFamily.Monospace
+    val linkColor = MaterialTheme.colorScheme.primary
+    val dimColor = MaterialTheme.colorScheme.outlineVariant
+    val codeBg = MaterialTheme.colorScheme.surfaceVariant
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         blocks.forEach { b ->
             when (b) {
                 is Blk.Meta -> MetaBlock(b.lines)
-                is Blk.Head -> Text(
-                    b.text,
+                is Blk.Head -> InlineText(
+                    text = b.text, mode = mode, linkColor = linkColor, dimColor = dimColor, codeBg = codeBg,
                     style = when (b.level) {
                         1 -> MaterialTheme.typography.headlineMedium
                         2 -> MaterialTheme.typography.headlineSmall
@@ -162,8 +165,9 @@ fun ReadingView(body: String, modifier: Modifier = Modifier) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 20.dp, bottom = 6.dp),
                 )
-                is Blk.Para -> Text(
-                    b.lines.joinToString(""),
+                is Blk.Para -> InlineText(
+                    text = b.lines.joinToString(""), mode = mode,
+                    linkColor = linkColor, dimColor = dimColor, codeBg = codeBg,
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
@@ -173,8 +177,11 @@ fun ReadingView(body: String, modifier: Modifier = Modifier) {
                     Box(Modifier.padding(end = 8.dp).width(3.dp).fillMaxHeight()
                         .clip(RoundedCornerShape(2.dp))
                         .background(MaterialTheme.colorScheme.outlineVariant))
-                    Text(b.text, style = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 26.sp))
+                    InlineText(
+                        text = b.text, mode = mode, linkColor = linkColor, dimColor = dimColor, codeBg = codeBg,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 26.sp),
+                    )
                 }
                 is Blk.Item -> Row(Modifier.padding(start = (b.indent * 6).dp, top = 3.dp, bottom = 3.dp)) {
                     val mark = when (b.task) {
@@ -185,7 +192,10 @@ fun ReadingView(body: String, modifier: Modifier = Modifier) {
                     }
                     Text(mark, modifier = Modifier.width(22.dp),
                         color = if (b.task != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                    Text(b.text, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp))
+                    InlineText(
+                        text = b.text, mode = mode, linkColor = linkColor, dimColor = dimColor, codeBg = codeBg,
+                        style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp),
+                    )
                 }
                 is Blk.Code -> Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -256,4 +266,22 @@ private fun TableBlock(b: Blk.Table) {
             }
         }
     }
+}
+
+/** 段落级文本：走 InlineRenderer 三档行内渲染（原样/弱化/隐藏）。 */
+@Composable
+private fun InlineText(
+    text: String,
+    mode: SymbolMode,
+    linkColor: androidx.compose.ui.graphics.Color,
+    dimColor: androidx.compose.ui.graphics.Color,
+    codeBg: androidx.compose.ui.graphics.Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+) {
+    Text(
+        InlineRenderer.render(text, mode, linkColor, dimColor, codeBg),
+        style = style, fontWeight = fontWeight, modifier = modifier,
+    )
 }

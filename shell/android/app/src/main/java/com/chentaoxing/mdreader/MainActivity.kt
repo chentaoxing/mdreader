@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chentaoxing.mdreader.core.*
 import com.chentaoxing.mdreader.render.ReadingView
+import com.chentaoxing.mdreader.render.SymbolMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,7 +56,7 @@ fun MDReaderApp(initialUri: Uri?) {
 
     // 核心结果
     var presets by remember { mutableStateOf(listOf("通用文章", "技术文档", "AI 生成文档", "小说")) }
-    var preset by remember { mutableStateOf("通用文章") }
+    var preset by remember { mutableStateOf(RecentStore.preset(ctx)) }
     var result by remember { mutableStateOf<OptimizeResult?>(null) }
     var rebuildResult by remember { mutableStateOf<RebuildResult?>(null) }
     var accept by remember { mutableStateOf(mapOf<String, Boolean>()) }
@@ -62,6 +64,11 @@ fun MDReaderApp(initialUri: Uri?) {
     var tab by remember { mutableStateOf(Tab.Reading) }
     var presetMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+
+    // 显示偏好（记忆）+ 最近列表
+    var symbolMode by remember { mutableStateOf(RecentStore.symbolMode(ctx)) }
+    var showRecents by remember { mutableStateOf(false) }
+    var recents by remember { mutableStateOf(RecentStore.recents(ctx)) }
 
     LaunchedEffect(Unit) {
         runCatching {
@@ -140,6 +147,13 @@ fun MDReaderApp(initialUri: Uri?) {
                 } else {
                     uri = u; displayName = name
                     coreBytes = dec.utf8; encLabel = dec.label; transcoded = dec.transcoded
+                    // SAF URI 的读权限默认只到本进程结束：持久化后「最近列表」重开才有效
+                    runCatching {
+                        ctx.contentResolver.takePersistableUriPermission(
+                            u, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    RecentStore.add(ctx, u.toString(), name)
+                    recents = RecentStore.recents(ctx)
                     runOptimize(dec.utf8, name)
                 }
             } catch (e: Exception) {
@@ -189,12 +203,21 @@ fun MDReaderApp(initialUri: Uri?) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } },
                     actions = {
+                        // 语法符号三档：原样 / 弱化 / 隐藏（产品招牌：把 ** 从屏幕上拿掉）
+                        TextButton(onClick = {
+                            symbolMode = when (symbolMode) { SymbolMode.Raw -> SymbolMode.Dim; SymbolMode.Dim -> SymbolMode.Hidden; SymbolMode.Hidden -> SymbolMode.Raw }
+                            RecentStore.setSymbolMode(ctx, symbolMode)
+                        }) { Text("Aa·${symbolMode.label}", style = MaterialTheme.typography.labelLarge) }
+                        TextButton(onClick = { recents = RecentStore.recents(ctx); showRecents = true }) {
+                            Text("最近", style = MaterialTheme.typography.labelLarge)
+                        }
                         Box {
                             TextButton(onClick = { presetMenu = true }) { Text(preset) }
                             DropdownMenu(expanded = presetMenu, onDismissRequest = { presetMenu = false }) {
                                 presets.forEach { p ->
                                     DropdownMenuItem(text = { Text(p) }, onClick = {
                                         preset = p; presetMenu = false
+                                        RecentStore.setPreset(ctx, p)
                                         if (coreBytes.isNotEmpty()) runOptimize(coreBytes, displayName)
                                     })
                                 }
@@ -239,10 +262,49 @@ fun MDReaderApp(initialUri: Uri?) {
 
                 val body = rebuildResult?.body ?: result!!.body
                 when (tab) {
-                    Tab.Reading -> ReadingView(body, Modifier.fillMaxSize())
+                    Tab.Reading -> ReadingView(body, Modifier.fillMaxSize(), symbolMode)
                     Tab.Changes -> ChangesTab(result!!, accept,
                         { id, v -> accept = accept + (id to v); runRebuild() })
                     Tab.Score -> ScoreTab(result!!)
+                }
+            }
+
+            if (showRecents) {
+                ModalBottomSheet(onDismissRequest = { showRecents = false }) {
+                    LazyColumn(Modifier.padding(bottom = 24.dp)) {
+                        item {
+                            Text("最近打开",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                        }
+                        if (recents.isEmpty()) {
+                            item {
+                                Text("还没有记录。打开一份 .md 后会出现在这里，点一下即可重读。",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                            }
+                        }
+                        items(recents, key = { it.uri }) { e ->
+                            ListItem(
+                                headlineContent = { Text(e.name, maxLines = 1) },
+                                supportingContent = { Text(
+                                    java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                                        .format(java.util.Date(e.time)),
+                                    style = MaterialTheme.typography.labelSmall) },
+                                trailingContent = {
+                                    TextButton(onClick = {
+                                        RecentStore.remove(ctx, e.uri)
+                                        recents = RecentStore.recents(ctx)
+                                    }) { Text("移除", style = MaterialTheme.typography.labelSmall) }
+                                },
+                                modifier = Modifier.clickable {
+                                    showRecents = false
+                                    loadUri(android.net.Uri.parse(e.uri))
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
