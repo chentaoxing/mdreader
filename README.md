@@ -224,10 +224,11 @@ cargo build --release
 
 ### 已具备能力、但尚未在真机验证
 
-- Android / iOS / macOS 目标：**没有跨目标编译产物可展示**（构建环境里 `rustup target add` 拿不到镜像）。
-  **本机更新（2026-10-08）：Windows 一档已不再是「无法验证」** —— 用 `x86_64-pc-windows-gnu` 交叉构建出
-  `mdfile-cli.exe` 与 `mdcore_ffi.dll`，在真机上跑 `check`（33/33）与 `fingerprint`，
-  输出与 Linux 逐字节一致；C ABI 另用 Python ctypes 直调 DLL 验过。五平台门为 **2/5 实测**。
+- ~~Android / iOS / macOS 目标：**没有跨目标编译产物可展示**~~
+  **2026-10-31：Android 已实测落地**——`shell/android/`（Compose 壳 + `mdcore-jni` JNI 门面），
+  `FingerprintParityTest` 在 API 35 x86_64 模拟器上把 33 份语料的输入正文校验和与桌面基线
+  逐字节对齐，**五平台门推进到 3/5 实测**（Linux / Windows / Android）。
+  构建方式与限制见 `shell/android/README.md`；iOS / macOS 仍未实现。
 - 代替性证明：`architecture_guard.rs` 源码级扫描 ＋ `fingerprint` 探针 ＋ `GOLDEN.csv`。
   注意这条守卫本身有过死规则（比对前源码被转小写，而 `SystemTime`/`Instant::now`/`File::open`/`File::create`/
   `Command::new` 五个模式带大写 ⇒ 永不触发），已修并加了「守卫的守卫」测试；
