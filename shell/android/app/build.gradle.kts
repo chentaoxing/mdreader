@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// 签名配置从 local.properties 读（已 gitignore）：MDREADER_STORE_FILE / STORE_PASSWORD / KEY_ALIAS。
+// 没有这三项时 release 回退 debug 签名——能装能测，但正式发布请务必配好自己的 keystore。
+val signingProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -18,10 +27,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val store = signingProps.getProperty("MDREADER_STORE_FILE")
+            if (store != null) {
+                storeFile = file(store)
+                storePassword = signingProps.getProperty("MDREADER_STORE_PASSWORD")
+                keyAlias = signingProps.getProperty("MDREADER_KEY_ALIAS")
+                keyPassword = signingProps.getProperty("MDREADER_STORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            val hasKeystore = signingProps.getProperty("MDREADER_STORE_FILE") != null
+            signingConfig = if (hasKeystore) signingConfigs.getByName("release")
+                            else signingConfigs.getByName("debug")
         }
     }
     compileOptions {
