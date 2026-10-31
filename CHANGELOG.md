@@ -3,6 +3,20 @@
 格式参考 Keep a Changelog；版本号遵循 SemVer。`mdfile_*` 是 C ABI 符号前缀，只要它不破坏，
 主版本号就不会因为内部重构而跳动。
 
+## 0.1.4 追加发布资产（2026-11-01，核心代码不变）
+
+- **Web/WASM 版上线**：https://chentaoxing.github.io/mdreader/ ——`shell/web/`（mdcore-wasm
+  wasm-bindgen 信封 + 单页前端）。node 直调 wasm 对账 33 语料与桌面基线逐字节一致（33/33），
+  真浏览器三档显示/勾选重建/下载全通。**五平台一致性门 4/5 实测**（Linux / Windows / Android / Web）。
+- **Linux x86_64 musl CLI**：`mdreader-cli-0.1.4-linux-x86_64-musl.tar.gz`（mdfile-cli 静态二进制
+  + libmdcore_ffi.a）。Windows 交叉编译（rust-lld），**在本机 WSL 实跑 `fingerprint`：
+  35 行输出与基线零差异**——Linux 一档从「云端编译过」升级为「本机交叉编译 + 真实运行验证」。
+- **Windows ARM64 CLI**：`mdreader-cli-0.1.4-windows-arm64.zip`。VS 补装 VC.Tools.ARM64 后
+  交叉编译，PE 头 Machine=0xAA64 验证通过；同一份纯 Rust 代码（x64 实跑过），无 ARM64 真机
+  可运行验证，标注为「未真机验证」。
+- mdcore 核心对 wasm32-unknown-unknown / x86_64-unknown-linux-musl / aarch64-pc-windows-msvc
+  三个目标 `cargo check` 零改动通过——架构守卫的平台无关承诺的可执行证据。
+
 ## 0.1.4 — 2026-10-24
 
 一次全面体检后的修复版：四个区域（核心规则 / FFI / CLI / Windows 壳）各自独立审查 + 行为实测，

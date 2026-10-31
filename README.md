@@ -337,8 +337,10 @@ mdfile-cli check tests/corpus/*.md
 ## 9. 已知限制（不粉饰）
 
 1. 未实现第十九/二十章的原始形态，理由见第 4 节；等你签字决定要不要放宽「内容不变」。
-2. 交付物里**只有 Linux 桌面二进制**可直接运行；其余四平台的可执行文件必须在你的机器上构建
-   （拿不到交叉工具链 / Android SDK / Xcode / WebKitGTK）。
+2. ~~交付物里**只有 Linux 桌面二进制**可直接运行~~ **2026-11-01 已扩**：release 现含
+   Windows x64（portable.zip）、Windows ARM64 CLI（交叉编译，未真机验证）、
+   Linux x86_64 musl CLI（交叉编译 + **本机 WSL 实跑对账通过**）、Android APK、
+   Web/WASM（在线）。macOS/iOS 原生包仍需 Apple 硬件。
 3. 没有 GUI。`report` 生成的 HTML 是「展示层用结构化数据」的示例实现，不是最终产品界面。
 4. `is_optimized_output` 依赖本工具的命名约定；用户手工改名成别的名字仍会被当普通文件处理。
 5. 评分是启发式提示，不构成质量保证；分数上升不代表「更好读」这一主观判断成立。
