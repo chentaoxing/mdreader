@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["wasm"]
+
+# 独立 workspace：wasm32 上 panic 只支持 abort，
+# 与根仓库的 panic="unwind"（FFI 需要）有意分开。
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
