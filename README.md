@@ -228,7 +228,12 @@ cargo build --release
   **2026-10-31：Android 已实测落地**——`shell/android/`（Compose 壳 + `mdcore-jni` JNI 门面），
   `FingerprintParityTest` 在 API 35 x86_64 模拟器上把 33 份语料的输入正文校验和与桌面基线
   逐字节对齐，**五平台门推进到 3/5 实测**（Linux / Windows / Android）。
-  构建方式与限制见 `shell/android/README.md`；iOS / macOS 仍未实现。
+  **2026-11-01：Web/WASM 已实测落地**——`shell/web/`（`mdcore-wasm` wasm-bindgen 门面 + 单页前端），
+  node 直调 wasm 对账 33 语料与桌面基线逐字节一致，真浏览器三档显示/勾选重建/下载全通，
+  部署物在 `gh-pages` 分支（`https://chentaoxing.github.io/mdreader/`，需在仓库 Settings→Pages
+  选 gh-pages 开启）。**五平台门 4/5 实测**（Linux / Windows / Android / Web-浏览器）。
+  macOS / iOS 壳仍需 Apple 硬件；浏览器版是它们的临时替代路径。
+  各壳构建方式见 `shell/android/README.md` 与 `shell/web/site/README.md`。
 - 代替性证明：`architecture_guard.rs` 源码级扫描 ＋ `fingerprint` 探针 ＋ `GOLDEN.csv`。
   注意这条守卫本身有过死规则（比对前源码被转小写，而 `SystemTime`/`Instant::now`/`File::open`/`File::create`/
   `Command::new` 五个模式带大写 ⇒ 永不触发），已修并加了「守卫的守卫」测试；
