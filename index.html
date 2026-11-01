@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MD文档阅读助手 · Web</title>
+<meta name="description" content="把写给 AI 的 .md 按人的阅读习惯重排——只调排版、一个字的内容都不改。完全离线运行。">
+<link rel="stylesheet" href="style.css?v=8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232476b8'/%3E%3Crect x='9' y='6' width='2.5' height='20' fill='white'/%3E%3Crect x='14' y='8' width='11' height='2.2' fill='white'/%3E%3Crect x='14' y='13' width='11' height='2.2' fill='white'/%3E%3Crect x='14' y='18' width='11' height='2.2' fill='white'/%3E%3Crect x='14' y='23' width='8' height='2.2' fill='white'/%3E%3C/svg%3E">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>MD文档阅读助手</h1>
+    <span class="sub" id="engineLine">引擎加载中… · 只调排版、一个字的内容都不改 · 全程离线</span>
+  </div>
+  <nav id="actions" hidden>
+    <button id="btnMode" class="ghost" title="语法符号三档：原样 → 弱化 → 隐藏">Aa·弱化</button>
+    <label class="ghost" id="presetWrap">预设
+      <select id="preset"></select>
+    </label>
+    <button id="btnOpen" class="ghost">打开</button>
+    <button id="btnDownload" class="primary" disabled>下载优化版</button>
+    <input type="file" id="fileInput" accept=".md,.markdown,text/markdown,text/plain" hidden>
+  </nav>
+</header>
+
+<div id="status" class="status">正在加载排版引擎（WebAssembly，一次性）…</div>
+
+<main id="main" hidden>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="read">阅读</button>
+    <button class="tab" data-tab="changes">改动</button>
+    <button class="tab" data-tab="score">评分</button>
+  </nav>
+
+  <section id="panel-read" class="panel active">
+    <article id="reading" class="reading"></article>
+  </section>
+
+  <section id="panel-changes" class="panel">
+    <div id="changes"></div>
+  </section>
+
+  <section id="panel-score" class="panel">
+    <div id="score"></div>
+  </section>
+</main>
+
+<div id="dropzone" hidden>
+  <div class="dz-inner">
+    <p class="dz-title">松手，打开这份 .md</p>
+    <p class="dz-sub">只读它的内容；你的文件不会上传到任何地方</p>
+  </div>
+</div>
+
+<footer>
+  <p>同一份 Rust 核心（mdcore），在
+    <a href="https://github.com/chentaoxing/mdreader/releases">Windows / Linux / Android</a> 与这里的浏览器里逐字节给出同一结论
+    （五平台一致性对账 4/5 实测）。本页无脚本外链、无埋点、不上传内容；关闭页面后什么也不留下。</p>
+</footer>
+
+<script type="module" src="app.js?v=8"></script>
+</body>
+</html>
