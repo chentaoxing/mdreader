@@ -65,7 +65,12 @@ function addIntro() {
     <h2>打开一份 .md 开始读</h2>
     <p>今天大量的 .md 是写给 AI 读的：超长并列句、成片的空行、<b>星号满天</b>。
     这个工具按人的阅读习惯重排——<b>一个字的内容都不改</b>。</p>
-    <p>点右上角「打开」，或直接把文件拖进来。优化结果可下载为 <code>*_阅读优化版.md</code>；原文件不会被动。</p>
+    <p>把文件拖进来即可；结果可下载为 <code>*_阅读优化版.md</code>，原文件不会被动。</p>
+    <p>喜欢它的话，同一份核心还有
+      <a href="https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-0.1.4-portable.zip">Windows 版</a>、
+      <a href="https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-0.1.4-android.apk">Android 版</a> 和
+      <a href="https://github.com/chentaoxing/mdreader/releases">命令行</a>——
+      五个平台对同一份文件逐字节给出同一结论。</p>
     <div class="btns"><button class="primary big" id="introOpen">打开文件</button></div>`;
   document.body.appendChild(div);
   $('introOpen').onclick = () => $('fileInput').click();
