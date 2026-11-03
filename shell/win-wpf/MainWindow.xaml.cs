@@ -428,17 +428,25 @@ public partial class MainWindow : Window
 
     private bool _editOn;
     private bool _dirty;
+    private bool _busy;                       // 弹窗开着时 WPF 仍在泵消息，连点会叠出第二个、第三个模态框
     private DispatcherTimer? _editDebounce;
 
     private void OnEdit(object s, RoutedEventArgs e)
     {
+        if (_busy) return;
         if (_editOn)
         {
             if (_dirty)
             {
-                var ask = MessageBox.Show(this,
-                    "左栏有还没保存的改动。关掉编辑会丢掉这些改动（源文件不会被改动）。",
-                    "MD文档阅读助手", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                MessageBoxResult ask;
+                _busy = true;
+                try
+                {
+                    ask = MessageBox.Show(this,
+                        "左栏有还没保存的改动。关掉编辑会丢掉这些改动（源文件不会被改动）。",
+                        "MD文档阅读助手", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                }
+                finally { _busy = false; }
                 if (ask != MessageBoxResult.OK) return;
                 OpenFile(_path);
                 SetEdit(false);
@@ -457,7 +465,8 @@ public partial class MainWindow : Window
         }
 
         var dlg = new EditWarningWindow { Owner = this };
-        dlg.ShowDialog();
+        _busy = true;
+        try { dlg.ShowDialog(); } finally { _busy = false; }
         if (!dlg.Confirmed)
         {
             LblStatus.Text = "没开编辑。左栏还是只读，源文件一个字节都不会动。";
@@ -510,7 +519,7 @@ public partial class MainWindow : Window
 
     private void OnSaveSrc(object s, RoutedEventArgs e)
     {
-        if (!_editOn || string.IsNullOrWhiteSpace(_path)) return;
+        if (_busy || !_editOn || string.IsNullOrWhiteSpace(_path)) return;
         if (!_dirty) { LblStatus.Text = "左栏没有改动，不用保存。"; return; }
 
         // 落盘前先重读一次：文件在我们打开之后被别的程序改过，就不写，也不猜哪份对
@@ -519,12 +528,17 @@ public partial class MainWindow : Window
         catch (Exception ex) { LblStatus.Text = "✗ 保存前重读失败：" + ex.Message + " —— 什么都没写。"; return; }
         if (!now.AsSpan().SequenceEqual(_original))
         {
-            MessageBox.Show(this,
-                "这份文件在你打开之后被别的程序改过了（重读出来的字节和打开时不一样）。\n\n" +
-                "我不覆盖，也不合并。请自己决定：\n" +
-                "  · 想留磁盘上这份 —— 重新打开一次文件，你刚改的会丢；\n" +
-                "  · 想留你改的这份 —— 用「另存为优化版…」存成新文件，再自己替换。",
-                "MD文档阅读助手", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _busy = true;
+            try
+            {
+                MessageBox.Show(this,
+                    "这份文件在你打开之后被别的程序改过了（重读出来的字节和打开时不一样）。\n\n" +
+                    "我不覆盖，也不合并。请自己决定：\n" +
+                    "  · 想留磁盘上这份 —— 重新打开一次文件，你刚改的会丢；\n" +
+                    "  · 想留你改的这份 —— 用「另存为优化版…」存成新文件，再自己替换。",
+                    "MD文档阅读助手", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _busy = false; }
             LblStatus.Text = "✗ 磁盘上的文件已经变了，拒绝写回（源文件未被改动）。";
             return;
         }
@@ -532,8 +546,13 @@ public partial class MainWindow : Window
         var bytes = TextDecode.Encode(_srcText, _encLabel, _original, out var encErr);
         if (bytes == null)
         {
-            MessageBox.Show(this, encErr ?? "写不回原编码。", "MD文档阅读助手",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            _busy = true;
+            try
+            {
+                MessageBox.Show(this, encErr ?? "写不回原编码。", "MD文档阅读助手",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { _busy = false; }
             LblStatus.Text = "✗ 写不回原编码，拒绝保存（源文件未被改动）。";
             return;
         }
