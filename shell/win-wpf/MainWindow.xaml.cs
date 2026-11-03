@@ -537,7 +537,8 @@ public partial class MainWindow : Window
         if (!_editOn) return;
         _coreBytes = new UTF8Encoding(false).GetBytes(_srcText);
         Run();
-        if (_dirty) LblStatus.Text = "● 有未保存的改动 —— 点「保存回源文件」才会写盘。";
+        // 直接引按钮自己的文案，免得改了按钮忘了改状态条
+        if (_dirty) LblStatus.Text = "● 有未保存的改动 —— 点「" + BtnSaveSrc.Content + "」才会写盘。";
     }
 
     private void OnSaveSrc(object s, RoutedEventArgs e)

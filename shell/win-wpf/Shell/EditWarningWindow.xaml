@@ -1,7 +1,7 @@
 <Window x:Class="MdFileAssistant.Shell.EditWarningWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="开启编辑之前" Width="880" Height="660" MinWidth="640" MinHeight="480"
+        Title="开启编辑之前" Width="880" Height="790" MinWidth="640" MinHeight="480"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{DynamicResource WindowBg}" UseLayoutRounding="True">
     <Grid Margin="34,28,34,24">
@@ -42,7 +42,7 @@
                            Text="· 只有你在「设置」里把保存目标改成「覆盖源文件」，才会真的写回原件——那之前会先复制一份 .bak（已存在就不覆盖），并且落盘前重读磁盘核对。"/>
                 <TextBlock Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextPrimary}"
-                           Text="· 开着编辑时每 2 分钟会把当前内容写一份到缓存目录（%LOCALAPPDATA%\\MdFileAssistant\\autosave），关软件、崩溃都找得回来。间隔、目录、留几份都在「设置」里。"/>
+                           Text="· 开着编辑时每 2 分钟会把当前内容写一份到缓存目录（本地应用数据下的 MdFileAssistant\autosave），关软件、崩溃都找得回来。间隔、目录、留几份都在「设置」里。"/>
                 <TextBlock Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextPrimary}"
                            Text="· 写回按原编码：UTF-8 / UTF-16 / GBK / GB18030 都不转码；那个编码装不下的字，宁可拒绝写也不会换成问号。"/>
