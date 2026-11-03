@@ -22,15 +22,13 @@ public static class TextDecode
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern int MultiByteToWideChar(uint codePage, uint flags, byte[] multi, int count, IntPtr wide, int wideCount);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern int WideCharToMultiByte(uint codePage, uint flags,
-        [MarshalAs(UnmanagedType.LPWStr)] string wide, int wideCount,
-        byte[]? multi, int multiCount, IntPtr defaultChar,
-        [MarshalAs(UnmanagedType.Bool)] out bool usedDefault);
+        string wide, int wideCount, byte[]? multi, int multiCount,
+        IntPtr defaultChar, IntPtr usedDefaultChar);
 
     private const uint CpGbk = 936;
     private const uint CpGB18030 = 54936;
-    private const uint WcNoBestFit = 0x400;   // 关掉近似映射：写不出就报，别偷偷换成别的字
 
     public static Result? Decode(byte[] raw)
     {
@@ -42,11 +40,13 @@ public static class TextDecode
         // 带 NUL 的字节流不是文本（UTF-16 已在上面按 BOM 处理掉了），不做任何猜测
         if (raw.Contains((byte)0)) return null;
 
-        // UTF-8（含带 BOM 的）：字节原样交给核心，行为与之前完全一致，不转码
+        // UTF-8（含带 BOM 的）：字节原样交给核心，行为与之前完全一致，不转码。
+        // 但给界面看的文本要剥掉开头那个 U+FEFF——Encoding.UTF8.GetString 不会替你去，
+        // 留着它，写回时要么变成双 BOM，要么被 TextBox 吞掉后整个 BOM 消失（0.2.0 就是后者）。
         try
         {
             new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(raw);
-            return new Result(Encoding.UTF8.GetString(raw), "UTF-8", raw, false);
+            return new Result(StripBom(Encoding.UTF8.GetString(raw)), "UTF-8", raw, false);
         }
         catch (ArgumentException) { /* 不是合法 UTF-8，往下试中文编码 */ }
 
@@ -84,6 +84,8 @@ public static class TextDecode
         finally { Marshal.FreeHGlobal(buf); }
     }
 
+    private static string StripBom(string s) => s.Length > 0 && s[0] == '\uFEFF' ? s[1..] : s;
+
     private static Result FromManaged(string text, string label)
     {
         // 转出来的副本一律不带 BOM：核心自己会记录并保留换行风格
@@ -103,7 +105,11 @@ public static class TextDecode
             case "UTF-8":
             {
                 bool hasBom = original.Length >= 3 && original[0] == 0xEF && original[1] == 0xBB && original[2] == 0xBF;
-                return new UTF8Encoding(hasBom).GetBytes(text);
+                // UTF8Encoding(preamble:true) 的 GetBytes 并不会自己吐前导 BOM——
+                // 只有 StreamWriter 那条路会。真机测出来带 BOM 的 .md 存回去 BOM 就没了，
+                // 所以这里手动拼。
+                var body = new UTF8Encoding(false).GetBytes(text);
+                return hasBom ? Concat(new byte[] { 0xEF, 0xBB, 0xBF }, body) : body;
             }
             case "UTF-16 LE（带 BOM）":
                 return Concat(new byte[] { 0xFF, 0xFE }, Encoding.Unicode.GetBytes(text));
@@ -123,39 +129,51 @@ public static class TextDecode
     {
         error = null;
         if (text.Length == 0) return Array.Empty<byte>();
-        int need = WideCharToMultiByte(cp, WcNoBestFit, text, text.Length, null, 0, IntPtr.Zero, out _);
+        // 不能用 WC_NO_BEST_FIT_CHARS + lpUsedDefaultChar 来判"写不出"：
+        // 这个组合里 lpDefaultChar 为 NULL 时 lpUsedDefaultChar 也必须为 NULL，
+        // 否则 API 直接报 ERROR_INVALID_FLAGS、连长度都算不出来（实测踩过）。
+        // 改成编完再解回来逐字比对——近似映射把字换掉了，回读一定对不上。
+        int need = WideCharToMultiByte(cp, 0, text, text.Length, null, 0, IntPtr.Zero, IntPtr.Zero);
         if (need <= 0)
         {
             error = $"这个编码（{label}）连长度都算不出来，写不回去。";
             return null;
         }
         var buf = new byte[need];
-        bool usedDefault;
-        int got = WideCharToMultiByte(cp, WcNoBestFit, text, text.Length, buf, need, IntPtr.Zero, out usedDefault);
-        if (got <= 0 || usedDefault)
+        int got = WideCharToMultiByte(cp, 0, text, text.Length, buf, need, IntPtr.Zero, IntPtr.Zero);
+        if (got <= 0)
+        {
+            error = $"这个编码（{label}）编不出来，写不回去。";
+            return null;
+        }
+        var back = FromMultiByte(buf, cp);
+        if (back != text)
         {
             var bad = FirstUnmappable(text, cp);
             error = $"这份文件是 {label}，你新打的字符 {bad} 在这个编码里根本没有对应的字节。" +
-                    "要么别打这个字符，要么另存成 UTF-8 的新文件——我不会把它换成问号写进你的文件。";
+                    "要么别打这个字符，要么另存成 UTF-8 的新文件——我不会把它换成别的字写进你的文件。";
             return null;
         }
         return buf;
     }
 
-    /// <summary>找出第一个在该代码页里写不出的字符，给报错用；找不到就回一个笼统说法。</summary>
+    /// <summary>找出第一个在该代码页里回读不一致的字符，给报错用；找不到就回一个笼统说法。</summary>
     private static string FirstUnmappable(string text, uint cp)
     {
-        for (int i = 0; i < text.Length; i++)
+        foreach (var ch in text.EnumerateRunes())
         {
-            var one = text[i].ToString();
-            if (WideCharToMultiByte(cp, WcNoBestFit, one, 1, null, 0, IntPtr.Zero, out _) <= 0) continue;
-            var probe = new byte[8];
-            if (WideCharToMultiByte(cp, WcNoBestFit, one, 1, probe, probe.Length, IntPtr.Zero, out bool used) > 0 && !used)
-                continue;
-            return $"「{one}」(U+{(int)text[i]:X4})";
+            var one = ch.ToString();
+            int n = WideCharToMultiByte(cp, 0, one, one.Length, null, 0, IntPtr.Zero, IntPtr.Zero);
+            if (n <= 0) return RuneText(ch);
+            var b = new byte[n];
+            if (WideCharToMultiByte(cp, 0, one, one.Length, b, n, IntPtr.Zero, IntPtr.Zero) <= 0)
+                return RuneText(ch);
+            if (FromMultiByte(b, cp) != one) return RuneText(ch);
         }
         return "某个字符";
     }
+
+    private static string RuneText(Rune r) => $"「{r.ToString()}」(U+{r.Value:X4})";
 
     private static byte[] Concat(byte[] head, byte[] body)
     {

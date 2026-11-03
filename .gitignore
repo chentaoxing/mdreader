@@ -1,8 +1,10 @@
 /target
 **/target
-# Windows 壳的构建产物
+# Windows 壳的构建产物（含 tests/ 下的验收工程）
 shell/win-wpf/bin/
 shell/win-wpf/obj/
+shell/win-wpf/**/bin/
+shell/win-wpf/**/obj/
 
 # 核心动态库是构建产物（由 cargo build -p mdcore-ffi 产出后拷进来），不入库
 shell/win-wpf/Native/*.dll

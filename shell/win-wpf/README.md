@@ -66,6 +66,22 @@ bin/Release/net10.0-windows/MdFileAssistant.exe 某个文件.md
 完全相同（`284810…085`），都是 6 处结构变化、正文变化 0；带 NUL 的伪 PNG 与无 BOM 的 UTF-16LE
 都被干净拒读，文件未被改写。
 
+### 写回去的那条路有专门的逐字节验收（`tests/encoding-roundtrip/`）
+
+读对了不代表写得回去。0.2.0 就是这么翻车的：带 BOM 的 UTF-8 存回去 BOM 整个没了，
+GBK 文件一律报「连长度都算不出来」。这两条界面点不出来，只有喂真字节、比真字节才看得见，
+所以立了一个控制台工程专门盯它——`dotnet run --project shell/win-wpf/tests/encoding-roundtrip`，
+退出码就是失败项数（当前 24 项全绿）。
+
+它引用的是 `Shell/TextDecode.cs` **正本**（csproj 里 `Compile Include ../../Shell/TextDecode.cs`），
+不是复制一份去测；改坏真代码，这个测试立刻红。跑的是 `tests/encoding-roundtrip/fixtures/` 下四份
+刻意保留字节特征的样本（UTF-8/CRLF、UTF-8 带 BOM/CRLF、UTF-16 LE、GBK），每份三问：
+标签对不对、**一字不改写回是否逐字节还原**、改一行后写回是否保留 BOM/前导且不许多出一份。
+外加 cp936 遇到写不出的字必须拒写并报出是哪个字符（GB18030 是全 Unicode 超集，emoji 不该误拒）、
+无 BOM 的 UTF-8 不许被补上 BOM、未知标签拒写。
+这些 fixture 在 `.gitattributes` 里标了 `-text`：一旦被 git 的换行规范化动过，
+「写回去和原文件一模一样」这条验收就变成自证。
+
 ## 编辑模式（顶栏「编辑：关 / 开」）与保存模型
 
 这个软件对外的承诺是"不改你的文件"。编辑是那条承诺唯一的例外，所以它被做成**必须你亲手开、而且记不住**：

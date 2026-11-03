@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    编码写回的逐字节验收：把 Shell/TextDecode.cs 本体（不是复制品）拉进一个控制台程序，
+    拿 fixtures 里四份真实字节流的样本做「读进来 → 一字不改 → 编回去 → 逐字节比对」。
+    为什么单独立一个工程：0.2.0 的两个数据事故（带 BOM 的 UTF-8 存回去 BOM 没了、
+    GBK 文件一律写不回去）只有这种"喂真字节、比真字节"的检查才能抓住，点界面抓不住。
+    退出码 = 失败项数，0 就是全绿。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>EncodingRoundtrip</RootNamespace>
+    <!-- 只编这两个文件：被测代码直接引用壳里的正本，改一处两边同时生效 -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../Shell/TextDecode.cs" />
+    <!-- fixtures 由默认的 None 通配收进来，这里只补"跟着产物一起拷出去"的元数据；
+         用 Update 而不是 Include，后者会和默认项撞成 NETSDK1022 重复项 -->
+    <None Update="fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

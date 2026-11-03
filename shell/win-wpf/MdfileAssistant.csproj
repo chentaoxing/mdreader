@@ -27,6 +27,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- 编码写回的逐字节验收工程住在这里（tests/encoding-roundtrip），它自己编译自己的，
+         不能被这个壳的默认 **/*.cs 通配捞进去——两个 Main 会撞车 -->
+    <Compile Remove="tests\**" />
+    <None Remove="tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 核心动态库随程序一起走；缺它时程序会明确提示，而不是静默降级 -->
     <!-- 必须落在 exe 同目录：DllImport 只搜程序目录与 PATH，不会进子目录找 -->
     <None Include="Native\mdcore_ffi.dll" Link="mdcore_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
