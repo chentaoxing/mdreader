@@ -431,6 +431,7 @@ public partial class MainWindow : Window
     private bool _busy;                       // 弹窗开着时 WPF 仍在泵消息，连点会叠出第二个、第三个模态框
     private DispatcherTimer? _editDebounce;
     private DispatcherTimer? _autoArc;        // 定时把没保存的内容写一份到缓存目录
+    private string _lastArchived = "";        // 上一次写进缓存的内容，一样的就别再抄一份
 
     private void OnEdit(object s, RoutedEventArgs e)
     {
@@ -495,7 +496,9 @@ public partial class MainWindow : Window
         BtnSaveSrc.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         BtnSaveSrc.IsEnabled = false;
         RefreshEditUi();
-        if (!on) { _editDebounce?.Stop(); _autoArc?.Stop(); return; }
+        if (!on) { _editDebounce?.Stop(); _autoArc?.Stop(); _lastArchived = ""; return; }
+
+        _lastArchived = _srcText;             // 从这一刻起，只有内容真的又变了才再抄一份
 
         _editDebounce ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _editDebounce.Tick -= OnEditDebounce;
@@ -613,6 +616,7 @@ public partial class MainWindow : Window
         var oldLen = _original.Length;
         _original = bytes;
         _dirty = false;
+        _lastArchived = _srcText;
         BtnSaveSrc.IsEnabled = false;
         UpdateSrcMeta();
         LblStatus.Text = "✓ 已写回 " + Path.GetFileName(_path) + "（" + how + "，" +
@@ -687,7 +691,9 @@ public partial class MainWindow : Window
     private void OnAutoArchive(object? s, EventArgs e)
     {
         if (!_editOn || !_dirty) return;              // 没改动就不制造一堆一样的缓存
+        if (_srcText == _lastArchived) return;        // 内容没再变就别每分钟抄一份同样的
         var (p, err) = WriteCacheCopy();
+        if (p != null) _lastArchived = _srcText;
         LblStatus.Text = p != null
             ? "◦ 自动存档已写入缓存：" + Path.GetFileName(p) + " · 左栏的改动还没落盘"
             : "✗ 自动存档没写进去（" + err + "）——改动只在屏幕上，还没保存。";
@@ -718,6 +724,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { LblStatus.Text = "✗ 写不出去：" + ex.Message + " —— 原件未动。"; return; }
 
         _dirty = false;
+        _lastArchived = _srcText;
         BtnSaveSrc.IsEnabled = false;
         LblStatus.Text = "✓ 已另存为 " + Path.GetFileName(target) + "（" + bytes.Length.ToString("N0") +
                          " 字节 · " + _encLabel + " · 原件 " + Path.GetFileName(_path) + " 未动）";
@@ -769,7 +776,8 @@ public partial class MainWindow : Window
                 {
                     r = MessageBox.Show(this,
                         "左栏还有没保存的改动。\n\n" +
-                        "· 「是」= 保存后再关（按设置：写回源文件）\n" +
+                        "· 「是」= 保存后再关（按设置：" +
+                        (_settings.OverwritesSource ? "写回源文件" : "写到同目录的新文件") + "）\n" +
                         "· 「否」= 直接关。改动已经先写进缓存目录了，" +
                         (cache != null ? "在 " + Path.GetFileName(cache) : "但这次没写进去：" + cacheErr) + "\n" +
                         "· 「取消」= 不关，回去继续改",
