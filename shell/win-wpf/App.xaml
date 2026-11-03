@@ -22,6 +22,9 @@
         <SolidColorBrush x:Key="StatusFg" Color="#3B4048"/>
         <SolidColorBrush x:Key="StatusBad" Color="#B3261E"/>
         <SolidColorBrush x:Key="BarTrack" Color="#EEF1F5"/>
+        <SolidColorBrush x:Key="WarnBg" Color="#FDF2F0"/>
+        <SolidColorBrush x:Key="WarnLine" Color="#E7B1A8"/>
+        <SolidColorBrush x:Key="WarnInk" Color="#B3261E"/>
 
         <Style TargetType="Window">
             <Setter Property="Background" Value="{DynamicResource WindowBg}"/>

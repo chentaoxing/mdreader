@@ -14,7 +14,7 @@ namespace MdFileAssistant;
 
 public partial class MainWindow : Window
 {
-    private byte[] _original = Array.Empty<byte>();     // 磁盘上的原始字节，永不写回
+    private byte[] _original = Array.Empty<byte>();     // 磁盘上最后一次读到/写回的字节，用于"外部改过就拒写"
     private byte[] _coreBytes = Array.Empty<byte>();    // 交给核心的 UTF-8 副本（同编码时就是原件）
     private bool _transcoded;                           // 是否发生过内存内转码
     private string _encLabel = "UTF-8";
@@ -161,13 +161,12 @@ public partial class MainWindow : Window
         _transcoded = dec.Transcoded;
         _encLabel = dec.Label;
         _srcText = dec.Text;
-        var nl = dec.Text.Contains("\r\n") ? "CRLF" : dec.Text.Contains('\r') ? "CR" : "LF";
-        LblSrcMeta.Text = $"{bytes.Length:N0} 字节 · {dec.Label} · {nl}" +
-                          (bytes.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }) ? " · 有 BOM" : "");
+        UpdateSrcMeta();
         if (_transcoded)
             LblStatus.Text = $"这份文件是 {dec.Label}。显示与优化都在内存里的 UTF-8 副本上做，原文件一个字节都不动；另存出去的会是 UTF-8 新文件。";
 
         Run();
+        if (_editOn) SetEdit(false);      // 换文件就回到只读：编辑不跨文件，也不被记住
     }
 
     private double Scale
@@ -237,7 +236,8 @@ public partial class MainWindow : Window
 
     private void Show(bool quiet = false)
     {
-        ViewSrc.Text = _srcText;                                   // 左栏：文件原样，不随阅读模式变
+        // 只在内容真的不一样时才回写左栏：编辑模式下用户的光标不能因为切阅读模式/字号被抹掉
+        if (ViewSrc.Text != _srcText) ViewSrc.Text = _srcText;
         ViewOut.Document = ReadingRenderer.RenderReading(_result.Body, Mode, Scale);
         var kept = _rows.Count(x => x.Accept && !x.Locked);
         LblOutMeta.Text = $"保留 {kept}/{_rows.Count} 条规则 · {_result.StructuralChanges} 处结构变化";
@@ -381,7 +381,8 @@ public partial class MainWindow : Window
 
         if (string.Equals(Path.GetFullPath(dlg.FileName), Path.GetFullPath(_path), StringComparison.OrdinalIgnoreCase))
         {
-            MessageBox.Show(this, "这个工具永不写入原文件——请换个文件名。", "MD文档阅读助手");
+            MessageBox.Show(this, "「另存为优化版」不写原文件——写原文件是「保存回源文件」的活。请换个文件名。",
+                "MD文档阅读助手");
             return;
         }
         try
@@ -394,6 +395,168 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, "写入失败：" + ex.Message, "MD文档阅读助手");
         }
+    }
+
+    // ---- 编辑模式 --------------------------------------------------------
+    //
+    // 默认关闭，而且每次启动、每次换文件都回到关闭：这个软件对外的承诺是"不改你的文件"，
+    // 编辑是那条承诺的例外，所以它不能被记住、不能被默认打开。
+    // 开之前先弹 EditWarningWindow（大面积、大字体），只有点最后一颗按钮才真的开。
+
+    private bool _editOn;
+    private bool _dirty;
+    private DispatcherTimer? _editDebounce;
+
+    private void OnEdit(object s, RoutedEventArgs e)
+    {
+        if (_editOn)
+        {
+            if (_dirty)
+            {
+                var ask = MessageBox.Show(this,
+                    "左栏有还没保存的改动。关掉编辑会丢掉这些改动（源文件不会被改动）。",
+                    "MD文档阅读助手", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                if (ask != MessageBoxResult.OK) return;
+                OpenFile(_path);
+                SetEdit(false);
+                LblStatus.Text = "编辑已关闭，没保存的改动已丢弃；源文件还是磁盘上那份。";
+                return;
+            }
+            SetEdit(false);
+            LblStatus.Text = "编辑已关闭，左栏回到只读。源文件一个字节都没动。";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_path) || _original.Length == 0)
+        {
+            LblStatus.Text = "先打开一份 .md 再谈编辑——现在没有文件可改。";
+            return;
+        }
+
+        var dlg = new EditWarningWindow { Owner = this };
+        dlg.ShowDialog();
+        if (!dlg.Confirmed)
+        {
+            LblStatus.Text = "没开编辑。左栏还是只读，源文件一个字节都不会动。";
+            return;
+        }
+        SetEdit(true);
+    }
+
+    private void SetEdit(bool on)
+    {
+        _editOn = on;
+        _dirty = false;
+        ViewSrc.IsReadOnly = !on;
+        ViewSrc.IsUndoEnabled = on;                       // 只读时没必要留撤销栈，编辑时必须有
+        BtnEdit.Content = on ? "编辑：开（点这里关闭）" : "编辑：关";
+        BtnSaveSrc.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        BtnSaveSrc.IsEnabled = false;
+        LblSrcHead.Text = on ? "源文件（编辑中 · 保存会写回这个文件）" : "源文件（只读，永不写回）";
+        LblSrcHead.Foreground = on ? Theme.ThemeManager.Brush("WarnInk")
+                                   : Theme.ThemeManager.Brush("TextPrimary");
+        if (!on) { _editDebounce?.Stop(); return; }
+
+        _editDebounce ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+        _editDebounce.Tick -= OnEditDebounce;
+        _editDebounce.Tick += OnEditDebounce;
+        _editDebounce.Stop();
+        LblStatus.Text = "编辑已开启：左栏可以打字。改动只有点「保存回源文件」才落盘，不点就什么都没发生。";
+        ViewSrc.Focus();
+    }
+
+    private void OnSrcTextChanged(object s, TextChangedEventArgs e)
+    {
+        if (!_editOn || ViewSrc.Text == _srcText) return;
+        _srcText = ViewSrc.Text;
+        _dirty = true;
+        BtnSaveSrc.IsEnabled = true;
+        _editDebounce?.Stop();
+        _editDebounce?.Start();
+    }
+
+    /// <summary>停手 350ms 后，用改过的文本重跑一次核心，让右栏读到的就是左栏现在的样子。</summary>
+    private void OnEditDebounce(object? s, EventArgs e)
+    {
+        _editDebounce?.Stop();
+        if (!_editOn) return;
+        _coreBytes = new UTF8Encoding(false).GetBytes(_srcText);
+        Run();
+        if (_dirty) LblStatus.Text = "● 有未保存的改动 —— 点「保存回源文件」才会写盘。";
+    }
+
+    private void OnSaveSrc(object s, RoutedEventArgs e)
+    {
+        if (!_editOn || string.IsNullOrWhiteSpace(_path)) return;
+        if (!_dirty) { LblStatus.Text = "左栏没有改动，不用保存。"; return; }
+
+        // 落盘前先重读一次：文件在我们打开之后被别的程序改过，就不写，也不猜哪份对
+        byte[] now;
+        try { now = File.ReadAllBytes(_path); }
+        catch (Exception ex) { LblStatus.Text = "✗ 保存前重读失败：" + ex.Message + " —— 什么都没写。"; return; }
+        if (!now.AsSpan().SequenceEqual(_original))
+        {
+            MessageBox.Show(this,
+                "这份文件在你打开之后被别的程序改过了（重读出来的字节和打开时不一样）。\n\n" +
+                "我不覆盖，也不合并。请自己决定：\n" +
+                "  · 想留磁盘上这份 —— 重新打开一次文件，你刚改的会丢；\n" +
+                "  · 想留你改的这份 —— 用「另存为优化版…」存成新文件，再自己替换。",
+                "MD文档阅读助手", MessageBoxButton.OK, MessageBoxImage.Warning);
+            LblStatus.Text = "✗ 磁盘上的文件已经变了，拒绝写回（源文件未被改动）。";
+            return;
+        }
+
+        var bytes = TextDecode.Encode(_srcText, _encLabel, _original, out var encErr);
+        if (bytes == null)
+        {
+            MessageBox.Show(this, encErr ?? "写不回原编码。", "MD文档阅读助手",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            LblStatus.Text = "✗ 写不回原编码，拒绝保存（源文件未被改动）。";
+            return;
+        }
+
+        // 保命副本：只在没有的时候建，里面永远是改动前的原件。建不出来就不写——
+        // 弹窗里答应了有这份备份，不能说话不算。
+        var bak = _path + ".bak";
+        try { if (!File.Exists(bak)) File.WriteAllBytes(bak, _original); }
+        catch (Exception ex)
+        {
+            LblStatus.Text = "✗ 保命副本 .bak 建不出来（" + ex.Message + "），所以这次不写。";
+            return;
+        }
+
+        var dir = Path.GetDirectoryName(_path) ?? ".";
+        var tmp = Path.Combine(dir, "." + Path.GetFileName(_path) + ".mdfile-tmp");
+        string how;
+        try
+        {
+            File.WriteAllBytes(tmp, bytes);
+            try { File.Replace(tmp, _path, null); how = "原子替换"; }
+            catch { File.Move(tmp, _path, true); how = "覆盖写入"; }
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* 清不掉临时文件，不掩盖真正的写失败 */ }
+            LblStatus.Text = "✗ 写入失败：" + ex.Message + " —— 源文件保持原样。";
+            return;
+        }
+
+        var oldLen = _original.Length;
+        _original = bytes;
+        _dirty = false;
+        BtnSaveSrc.IsEnabled = false;
+        UpdateSrcMeta();
+        LblStatus.Text = "✓ 已写回 " + Path.GetFileName(_path) + "（" + how + "，" +
+                         oldLen.ToString("N0") + " → " + bytes.Length.ToString("N0") + " 字节 · " + _encLabel +
+                         " · 改动前的原件在 " + Path.GetFileName(bak) + "）";
+    }
+
+    /// <summary>左栏表头那行「多少字节 · 什么编码 · 什么换行」，读进来和写回去都靠它说话。</summary>
+    private void UpdateSrcMeta()
+    {
+        var nl = _srcText.Contains("\r\n") ? "CRLF" : _srcText.Contains('\r') ? "CR" : "LF";
+        LblSrcMeta.Text = _original.Length.ToString("N0") + " 字节 · " + _encLabel + " · " + nl +
+                          (_original.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }) ? " · 有 BOM" : "");
     }
 
     private void OnAssoc(object s, RoutedEventArgs e)

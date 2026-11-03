@@ -48,6 +48,9 @@ public static class ThemeManager
         ["FieldBg"] = C(0xFF, 0xFF, 0xFF),
         ["FieldText"] = C(0x22, 0x29, 0x2F),
         ["BarTrack"] = C(0xEE, 0xF1, 0xF5),
+        ["WarnBg"] = C(0xFD, 0xF2, 0xF0),
+        ["WarnLine"] = C(0xE7, 0xB1, 0xA8),
+        ["WarnInk"] = C(0xB3, 0x26, 0x1E),
     };
 
     private static readonly Dictionary<string, Color> Dark = new()
@@ -78,6 +81,9 @@ public static class ThemeManager
         ["FieldBg"] = C(0x23, 0x26, 0x2B),
         ["FieldText"] = C(0xDD, 0xE2, 0xE8),
         ["BarTrack"] = C(0x2A, 0x2E, 0x35),
+        ["WarnBg"] = C(0x33, 0x21, 0x1F),
+        ["WarnLine"] = C(0x6E, 0x3A, 0x34),
+        ["WarnInk"] = C(0xF2, 0xA7, 0x9F),
     };
 
     private static Color C(byte r, byte g, byte b) => Color.FromRgb(r, g, b);

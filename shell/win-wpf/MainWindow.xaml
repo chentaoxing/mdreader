@@ -5,12 +5,15 @@
         Background="{DynamicResource WindowBg}" AllowDrop="True"
         Drop="OnDrop" DragOver="OnDragOver" UseLayoutRounding="True">
     <DockPanel>
-        <!-- 顶栏：只有「怎么读」相关的动作，没有任何改内容的入口 -->
+        <!-- 顶栏：读法相关的动作 + 一个默认关着的编辑开关。编辑要你亲手开，开之前先弹大字警告 -->
         <Border DockPanel.Dock="Top" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelLine}" BorderThickness="0,0,0,1" Padding="14,10">
             <DockPanel LastChildFill="False">
                 <Button x:Name="BtnOpen" Content="打开 .md…" Click="OnOpen" FontWeight="SemiBold"/>
                 <Button x:Name="BtnSave" Content="另存为优化版…" Click="OnSave" IsEnabled="False"/>
                 <Separator DockPanel.Dock="Left" Width="10"/>
+                <Button x:Name="BtnEdit" Content="编辑：关" Click="OnEdit" FontWeight="SemiBold" Margin="0,0,10,0"/>
+                <Button x:Name="BtnSaveSrc" Content="保存回源文件" Click="OnSaveSrc" Margin="0,0,10,0"
+                        FontWeight="Bold" Foreground="{DynamicResource WarnInk}" Visibility="Collapsed"/>
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
                     <TextBlock Text="预设" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <ComboBox x:Name="CmbPreset" Width="112" VerticalAlignment="Center" SelectionChanged="OnPresetChanged"/>
@@ -65,11 +68,11 @@
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Background="{DynamicResource HeaderBg}" BorderBrush="{DynamicResource PanelLine}" BorderThickness="0,0,0,1" Padding="10,6">
                         <DockPanel>
-                            <TextBlock Text="源文件（只读，永不写回）" FontWeight="SemiBold" FontSize="12.5"/>
+                            <TextBlock x:Name="LblSrcHead" Text="源文件（只读，永不写回）" FontWeight="SemiBold" FontSize="12.5"/>
                             <TextBlock x:Name="LblSrcMeta" DockPanel.Dock="Right" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}" FontSize="12"/>
                         </DockPanel>
                     </Border>
-                    <TextBox x:Name="ViewSrc" IsReadOnly="True" BorderThickness="0"
+                    <TextBox x:Name="ViewSrc" IsReadOnly="True" BorderThickness="0" TextChanged="OnSrcTextChanged"
                              FontFamily="Consolas, Cascadia Mono, Courier New" FontSize="12.5"
                              Padding="10,8,10,8" TextWrapping="NoWrap" AcceptsReturn="True" AcceptsTab="True"
                              IsUndoEnabled="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
