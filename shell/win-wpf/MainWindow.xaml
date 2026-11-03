@@ -42,6 +42,7 @@
                 <CheckBox x:Name="ChkAuto" Content="启动时检查" DockPanel.Dock="Right" VerticalAlignment="Center"
                           Margin="0,0,12,0" Checked="OnAutoChanged" Unchecked="OnAutoChanged"/>
                 <Button x:Name="BtnAssoc" Content="设为 .md 打开方式…" DockPanel.Dock="Right" Click="OnAssoc"/>
+                <Button x:Name="BtnSettings" Content="设置" DockPanel.Dock="Right" Margin="0,0,10,0" Click="OnSettings"/>
                 <TextBlock x:Name="LblFile" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="{DynamicResource TextMuted}" Text="未打开文件" Margin="0,0,10,0"/>
             </DockPanel>
         </Border>

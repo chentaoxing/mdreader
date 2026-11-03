@@ -397,7 +397,7 @@ public partial class MainWindow : Window
         {
             Title = "另存为优化版",
             Filter = "Markdown|*.md",
-            InitialDirectory = Path.GetDirectoryName(_path),
+            InitialDirectory = _settings.SaveAsDirOr(_path),
             FileName = name,
         };
         if (dlg.ShowDialog(this) != true) return;
@@ -430,6 +430,7 @@ public partial class MainWindow : Window
     private bool _dirty;
     private bool _busy;                       // 弹窗开着时 WPF 仍在泵消息，连点会叠出第二个、第三个模态框
     private DispatcherTimer? _editDebounce;
+    private DispatcherTimer? _autoArc;        // 定时把没保存的内容写一份到缓存目录
 
     private void OnEdit(object s, RoutedEventArgs e)
     {
@@ -443,14 +444,17 @@ public partial class MainWindow : Window
                 try
                 {
                     ask = MessageBox.Show(this,
-                        "左栏有还没保存的改动。关掉编辑会丢掉这些改动（源文件不会被改动）。",
+                        "左栏有还没保存的改动。关掉编辑会丢弃这些改动（源文件不会被改动）。\n\n" +
+                        "丢弃前会先把现在的内容写一份到缓存目录，找得回来。",
                         "MD文档阅读助手", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
                 }
                 finally { _busy = false; }
                 if (ask != MessageBoxResult.OK) return;
+                var (lostPath, _) = WriteCacheCopy();
                 OpenFile(_path);
                 SetEdit(false);
-                LblStatus.Text = "编辑已关闭，没保存的改动已丢弃；源文件还是磁盘上那份。";
+                LblStatus.Text = "编辑已关闭，没保存的改动已丢弃；源文件还是磁盘上那份。" +
+                                 (lostPath == null ? "" : " 丢弃前的内容留在 " + Path.GetFileName(lostPath));
                 return;
             }
             SetEdit(false);
@@ -464,13 +468,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        var dlg = new EditWarningWindow { Owner = this };
-        _busy = true;
-        try { dlg.ShowDialog(); } finally { _busy = false; }
-        if (!dlg.Confirmed)
+        // 那屏大字警告默认必弹；设置里关掉就直接进编辑（表头仍会变红，按钮仍在）
+        if (_settings.WarnBeforeEdit)
         {
-            LblStatus.Text = "没开编辑。左栏还是只读，源文件一个字节都不会动。";
-            return;
+            var dlg = new EditWarningWindow { Owner = this };
+            _busy = true;
+            try { dlg.ShowDialog(); } finally { _busy = false; }
+            if (!dlg.Confirmed)
+            {
+                LblStatus.Text = "没开编辑。左栏还是只读，源文件一个字节都不会动。";
+                return;
+            }
         }
         SetEdit(true);
     }
@@ -484,16 +492,31 @@ public partial class MainWindow : Window
         BtnEdit.Content = on ? "编辑：开（点这里关闭）" : "编辑：关";
         BtnSaveSrc.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         BtnSaveSrc.IsEnabled = false;
-        LblSrcHead.Text = on ? "源文件（编辑中 · 保存会写回这个文件）" : "源文件（只读，永不写回）";
-        LblSrcHead.Foreground = on ? Theme.ThemeManager.Brush("WarnInk")
-                                   : Theme.ThemeManager.Brush("TextPrimary");
-        if (!on) { _editDebounce?.Stop(); return; }
+        BtnSaveSrc.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        BtnSaveSrc.IsEnabled = false;
+        RefreshEditUi();
+        if (!on) { _editDebounce?.Stop(); _autoArc?.Stop(); return; }
 
         _editDebounce ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _editDebounce.Tick -= OnEditDebounce;
         _editDebounce.Tick += OnEditDebounce;
         _editDebounce.Stop();
-        LblStatus.Text = "编辑已开启：左栏可以打字。改动只有点「保存回源文件」才落盘，不点就什么都没发生。";
+
+        if (_settings.AutoArchive)
+        {
+            _autoArc ??= new DispatcherTimer();
+            _autoArc.Tick -= OnAutoArchive;
+            _autoArc.Tick += OnAutoArchive;
+            _autoArc.Interval = TimeSpan.FromMinutes(Math.Clamp(_settings.AutoArchiveMinutes, 1, 240));
+            _autoArc.Start();
+        }
+        else _autoArc?.Stop();
+
+        LblStatus.Text = (_settings.OverwritesSource
+                ? "编辑已开启：改动点「保存回源文件」才写回这个文件。"
+                : "编辑已开启：改动点「另存为新文件」写到原件旁边，原件不动。")
+            + (_settings.AutoArchive
+                ? $" 开着编辑时每 {_settings.AutoArchiveMinutes} 分钟另存一份到缓存目录。" : "");
         ViewSrc.Focus();
     }
 
@@ -521,6 +544,9 @@ public partial class MainWindow : Window
     {
         if (_busy || !_editOn || string.IsNullOrWhiteSpace(_path)) return;
         if (!_dirty) { LblStatus.Text = "左栏没有改动，不用保存。"; return; }
+
+        // 默认走这条：原件不动，改动写到原件旁边一个新文件
+        if (!_settings.OverwritesSource) { SaveAsNewFile(); return; }
 
         // 落盘前先重读一次：文件在我们打开之后被别的程序改过，就不写，也不猜哪份对
         byte[] now;
@@ -599,6 +625,169 @@ public partial class MainWindow : Window
         var nl = _srcText.Contains("\r\n") ? "CRLF" : _srcText.Contains('\r') ? "CR" : "LF";
         LblSrcMeta.Text = _original.Length.ToString("N0") + " 字节 · " + _encLabel + " · " + nl +
                           (_original.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF }) ? " · 有 BOM" : "");
+    }
+
+    /// <summary>把「保存去哪」这件事在界面上说清楚：按钮文案 + 左栏表头，都跟着设置走。</summary>
+    private void RefreshEditUi()
+    {
+        BtnSaveSrc.Content = _settings.OverwritesSource ? "保存回源文件" : "另存为新文件";
+        LblSrcHead.Text = _editOn
+            ? (_settings.OverwritesSource ? "源文件（编辑中 · 保存会写回这个文件）"
+                                          : "源文件（编辑中 · 保存写到同目录的新文件）")
+            : "源文件（只读，永不写回）";
+        LblSrcHead.Foreground = _editOn ? Theme.ThemeManager.Brush("WarnInk")
+                                        : Theme.ThemeManager.Brush("TextPrimary");
+    }
+
+    private static string SaveStamp() => DateTime.Now.ToString("yyyyMMdd-HHmmss");
+
+    /// <summary>
+    /// 往缓存目录写一份当前内容。缓存是「还没决定怎么落盘」的东西，所以：
+    /// 写不进原编码就退成 UTF-8（文件名后缀会标出来），它不是用来替换原件的，是用来找回来的。
+    /// </summary>
+    private (string? Path, string? Error) WriteCacheCopy()
+    {
+        if (string.IsNullOrWhiteSpace(_path)) return (null, "没有打开的文件，缓存没地方写");
+        try
+        {
+            var dir = _settings.CacheDirOrDefault;
+            Directory.CreateDirectory(dir);
+            var stem = Path.GetFileNameWithoutExtension(_path);
+            var full = Path.Combine(dir, stem + "." + SaveStamp() + ".md");
+            var bytes = TextDecode.Encode(_srcText, _encLabel, _original, out var encErr);
+            if (bytes == null)
+            {
+                bytes = new UTF8Encoding(false).GetBytes(_srcText);
+                full = Path.Combine(dir, stem + "." + SaveStamp() + ".退回UTF-8.md");
+                LblStatus.Text = "⚠ 缓存这份按 " + _encLabel + " 写不下（" + encErr + "），已改存成 UTF-8。";
+            }
+            File.WriteAllBytes(full, bytes);
+            PruneCache(dir, stem);
+            return (full, null);
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    /// <summary>只清理「这个源文件」的缓存，按最近修改时间留下最新几份。</summary>
+    private void PruneCache(string dir, string stem)
+    {
+        if (_settings.AutoArchiveKeep <= 0) return;
+        try
+        {
+            var stale = Directory.GetFiles(dir, stem + ".*.md*")
+                .Where(f => !string.Equals(f, _path, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
+                .Skip(_settings.AutoArchiveKeep);
+            foreach (var f in stale) { try { File.Delete(f); } catch { /* 删不掉就留着，不值得为这个弹窗 */ } }
+        }
+        catch { /* 列目录失败同样不拦用户干活 */ }
+    }
+
+    private void OnAutoArchive(object? s, EventArgs e)
+    {
+        if (!_editOn || !_dirty) return;              // 没改动就不制造一堆一样的缓存
+        var (p, err) = WriteCacheCopy();
+        LblStatus.Text = p != null
+            ? "◦ 自动存档已写入缓存：" + Path.GetFileName(p) + " · 左栏的改动还没落盘"
+            : "✗ 自动存档没写进去（" + err + "）——改动只在屏幕上，还没保存。";
+    }
+
+    /// <summary>默认的保存：写到原件旁边一个新文件，原件一个字节不动。</summary>
+    private void SaveAsNewFile()
+    {
+        var dir = Path.GetDirectoryName(_path) ?? "";
+        if (string.IsNullOrEmpty(dir)) { LblStatus.Text = "✗ 这个文件没有所在目录，写不出新文件。"; return; }
+
+        var bytes = TextDecode.Encode(_srcText, _encLabel, _original, out var encErr);
+        if (bytes == null)
+        {
+            _busy = true;
+            try { MessageBox.Show(this, encErr ?? "写不回原编码。", "MD文档阅读助手",
+                    MessageBoxButton.OK, MessageBoxImage.Warning); }
+            finally { _busy = false; }
+            LblStatus.Text = "✗ 写不回原编码，没有落盘（原件本来也没动）。";
+            return;
+        }
+
+        var stem = Path.GetFileNameWithoutExtension(_path);
+        var target = Path.Combine(dir, stem + ".改于" + SaveStamp() + ".md");
+        for (int i = 2; File.Exists(target) && i < 100; i++)          // 同一秒里连点两次别互相盖掉
+            target = Path.Combine(dir, $"{stem}.改于{SaveStamp()}-{i}.md");
+        try { File.WriteAllBytes(target, bytes); }
+        catch (Exception ex) { LblStatus.Text = "✗ 写不出去：" + ex.Message + " —— 原件未动。"; return; }
+
+        _dirty = false;
+        BtnSaveSrc.IsEnabled = false;
+        LblStatus.Text = "✓ 已另存为 " + Path.GetFileName(target) + "（" + bytes.Length.ToString("N0") +
+                         " 字节 · " + _encLabel + " · 原件 " + Path.GetFileName(_path) + " 未动）";
+    }
+
+    private void OnSettings(object s, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        var dlg = new SettingsWindow(_settings) { Owner = this };
+        _busy = true;
+        bool? ok;
+        try { ok = dlg.ShowDialog(); } finally { _busy = false; }
+        if (ok != true) return;
+
+        _settings.Save();
+        RefreshEditUi();
+        if (_editOn)
+        {
+            if (_settings.AutoArchive)
+            {
+                _autoArc ??= new DispatcherTimer();
+                _autoArc.Tick -= OnAutoArchive;
+                _autoArc.Tick += OnAutoArchive;
+                _autoArc.Interval = TimeSpan.FromMinutes(Math.Clamp(_settings.AutoArchiveMinutes, 1, 240));
+                _autoArc.Start();
+            }
+            else _autoArc?.Stop();
+        }
+        LblStatus.Text = "✓ 设置已保存：保存目标「" + _settings.EditSaveTarget + "」 · 自动存档 " +
+                         (_settings.AutoArchive ? "每 " + _settings.AutoArchiveMinutes + " 分钟" : "关") +
+                         " · 编辑前弹确认 " + (_settings.WarnBeforeEdit ? "开" : "关") +
+                         " · 关闭时询问 " + (_settings.AskOnClose ? "开" : "关") + "。";
+    }
+
+    /// <summary>
+    /// 关软件时如果有没保存的改动：先把当前内容写进缓存目录，再问一句。
+    /// 顺序很重要——先写后问，所以「不保存」也不会真丢，缓存那份还在。
+    /// </summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_editOn && _dirty)
+        {
+            var (cache, cacheErr) = WriteCacheCopy();
+            if (_settings.AskOnClose)
+            {
+                _busy = true;
+                MessageBoxResult r;
+                try
+                {
+                    r = MessageBox.Show(this,
+                        "左栏还有没保存的改动。\n\n" +
+                        "· 「是」= 保存后再关（按设置：写回源文件）\n" +
+                        "· 「否」= 直接关。改动已经先写进缓存目录了，" +
+                        (cache != null ? "在 " + Path.GetFileName(cache) : "但这次没写进去：" + cacheErr) + "\n" +
+                        "· 「取消」= 不关，回去继续改",
+                        "MD文档阅读助手", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+                }
+                finally { _busy = false; }
+
+                if (r == MessageBoxResult.Cancel) { e.Cancel = true; return; }
+                if (r == MessageBoxResult.Yes)
+                {
+                    e.Cancel = true;
+                    OnSaveSrc(this, new RoutedEventArgs());
+                    if (!_dirty) Dispatcher.BeginInvoke(new Action(Close));   // 真写成了才关，没写成留在原地
+                    return;
+                }
+            }
+        }
+        _autoArc?.Stop();
+        base.OnClosing(e);
     }
 
     private void OnAssoc(object s, RoutedEventArgs e)
