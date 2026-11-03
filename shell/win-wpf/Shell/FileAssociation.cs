@@ -33,9 +33,9 @@ public static class FileAssociation
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "reg.exe");
 
     // 写完注册表必须广播一次，否则已经跑着的程序（豆包、资源管理器、任何调
-    // SHAssocEnumHandlers 的第三方壳）会拿它自己缓存的那份关联表，
-    // 用户点了「注册」却在下拉里看不到我们。实测：不广播时新进程能枚举到我们，
-    // 常驻进程不一定。
+    // SHAssocEnumHandlers 的第三方壳）可能继续拿它自己缓存的那份关联表。
+    // 这是安装器的标准动作；本机没有做"广播 vs 不广播"的对照实验，
+    // 所以别把它当成"不广播就一定看不到"的结论。
     [DllImport("shell32.dll")]
     private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
     private const int ShcneAssocChanged = 0x08000000;
