@@ -30,9 +30,19 @@ pub struct OpenDocument {
     pub newline: NewlineStyle,
 }
 
+/// 单次调用的输入上限。五平台与 CLI 同一数值，避免「某平台能处理、某平台报错」的分裂。
+/// 历史教训（v0.1.4 修复）：这个上限曾只在 FFI 层检查，CLI 直连核心时被绕过，
+/// 66 MiB 的文件在命令行上被照单全收（约 60 秒、数 GB 内存），与 mdfile.h 的声明不符。
+pub const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
+
 impl OpenDocument {
     /// 从字节流构建。非 UTF-8 直接报错，绝不猜测编码（规格第三十二章）。
+    /// 超过 [`MAX_INPUT_BYTES`] 同样直接报错——上限的唯一执行点在这里，
+    /// CLI、FFI 与四个平台壳都从本函数进入，谁也绕不过去。
     pub fn from_bytes(identifier: impl Into<String>, bytes: &[u8], newline: NewlineStyle) -> CoreResult<Self> {
+        if bytes.len() > MAX_INPUT_BYTES {
+            return Err(CoreError::TooLarge { limit: MAX_INPUT_BYTES, actual: bytes.len() });
+        }
         let layer = TextLayer::from_bytes(bytes)?;
         Ok(OpenDocument {
             identifier: identifier.into(),
@@ -207,12 +217,18 @@ pub fn should_include(name: &str) -> Option<&'static str> {
 pub fn plan_batch(ids: Vec<String>, mode: BatchMode, exists: impl Fn(&str) -> bool) -> BatchPlan {
     let mut jobs = Vec::new();
     let mut skipped = Vec::new();
+    // v0.1.4：批内已规划的输出名同样算「已占用」——`notes.md` 与 `notes.markdown`
+    // 剥掉扩展名后同为主干 `notes`，旧实现两份都推出 `notes_阅读优化版.md`，
+    // 写盘时第二份静默覆盖第一份。用 Vec 做成员查询（架构守卫禁哈希容器；
+    // 每批只建一次表、只查不迭代，规模可忽略）。
+    let mut planned: Vec<String> = Vec::new();
     for id in ids {
         if let Some(why) = should_include(&id) {
             skipped.push((id, why.to_string()));
             continue;
         }
-        let out = derive_output_name(&id, |n| exists(n));
+        let out = derive_output_name(&id, |n| exists(n) || planned.iter().any(|p| p == n));
+        planned.push(out.clone());
         jobs.push(Job { source_id: id, output_name: out });
     }
     BatchPlan { mode, jobs, skipped }
@@ -483,8 +499,21 @@ mod tests {
     }
 
     #[test]
-    fn batch_plan_keeps_user_order() {
-        let ids = vec!["b.md".to_string(), "skip.txt".to_string(), "a.md".to_string()];
+    fn batch_plan_never_collides_within_one_batch() {
+        // 回归（v0.1.4）：`notes.md` 与 `notes.markdown` 剥掉扩展名同为主干 `notes`，
+        // 旧实现两份都规划出 `notes_阅读优化版.md`——按规划名写盘的第二份会覆盖第一份。
+        let plan = plan_batch(
+            vec!["notes.md".into(), "notes.markdown".into()],
+            BatchMode::DirectoryScan,
+            |_| false,
+        );
+        let names: Vec<&str> = plan.jobs.iter().map(|j| j.output_name.as_str()).collect();
+        assert_eq!(names[0], "notes_阅读优化版.md");
+        assert_eq!(names[1], "notes_阅读优化版_2.md", "批内已规划的名字必须算已占用：{names:?}");
+    }
+
+    #[test]
+    fn batch_plan_keeps_user_order() {        let ids = vec!["b.md".to_string(), "skip.txt".to_string(), "a.md".to_string()];
         let p = plan_batch(ids, BatchMode::UserSelection, |_| false);
         assert_eq!(p.jobs.iter().map(|j| j.source_id.as_str()).collect::<Vec<_>>(), vec!["b.md", "a.md"]);
         assert_eq!(p.skipped.len(), 1);
@@ -580,6 +609,19 @@ mod tests {
         let bad = [0xffu8, 0xfe, 0x00, 0x41];
         let e = OpenDocument::from_bytes("a.md", &bad, NewlineStyle::Preserve).unwrap_err();
         assert!(matches!(e, CoreError::InvalidUtf8), "{e}");
+    }
+
+    #[test]
+    fn oversized_input_is_rejected_at_the_core_boundary() {
+        // 回归（v0.1.4）：64 MiB 上限此前只在 FFI 层检查，CLI 直连核心时被整个绕过
+        // ——66 MiB 的文件在命令行上被照单全收（约 60 秒、数 GB 内存）。
+        // 现在唯一执行点在 from_bytes：CLI、FFI 与四个平台壳都从这里进，谁也绕不过。
+        let big = vec![b'#'; MAX_INPUT_BYTES + 1];
+        let e = OpenDocument::from_bytes("big.md", &big, NewlineStyle::Preserve).unwrap_err();
+        assert!(matches!(e, CoreError::TooLarge { .. }), "{e}");
+        // 恰好在限上的必须收下
+        let edge = vec![b'#'; MAX_INPUT_BYTES];
+        assert!(OpenDocument::from_bytes("edge.md", &edge, NewlineStyle::Preserve).is_ok());
     }
 
     #[test]

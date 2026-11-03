@@ -1,0 +1,14 @@
+[package]
+name = "mdcore-jni"
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+description = "Android JNI facade over the mdfile.h C ABI — UI 只见 JSON 信封，不见裸指针"
+
+[lib]
+name = "mdcore_jni"
+crate-type = ["cdylib"]
+
+[dependencies]
+mdcore-ffi = { path = "../mdcore-ffi" }
+jni = "0.21"

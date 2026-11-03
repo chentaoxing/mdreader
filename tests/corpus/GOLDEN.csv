@@ -14,7 +14,7 @@
 14-korean.md,67d6d2d381da5475,w176,p20,c107,u2,h0,r0,b0,len971,67d6d2d381da5475,w176,p20,c107,u2,h0,r0,b0,len965,9800920100,2,2,R02.trailing-whitespace+R08.table-delimiter
 15-complex-code.md,c2b6edeccbf81f1f,w32,p5,c7592,u0,h0,r0,b0,len8032,c2b6edeccbf81f1f,w32,p5,c7592,u0,h0,r0,b0,len8032,9400830100,0,1,
 16-complex-tables.md,0bc45b42956f99f2,w401,p101,c85,u1,h40,r0,b0,len3406,0bc45b42956f99f2,w401,p101,c85,u1,h40,r0,b0,len3249,9800920100,13,2,R08.table-delimiter
-17-nested-lists.md,0ed311dacd98473b,w362,p49,c45,u6,h0,r25,b0,len3118,0ed311dacd98473b,w362,p49,c45,u6,h0,r25,b0,len3117,7852738100,1,2,R02.trailing-whitespace
+17-nested-lists.md,0ed311dacd98473b,w362,p49,c45,u6,h0,r25,b0,len3118,0ed311dacd98473b,w362,p49,c45,u6,h0,r25,b0,len3115,7852738100,2,2,R02.trailing-whitespace
 18-blockquotes-footnotes.md,295e2c5ffc7045f6,w404,p59,c123,u1,h172,r21,b0,len3311,295e2c5ffc7045f6,w404,p59,c123,u1,h172,r21,b0,len3286,7376200100,16,2,R02.trailing-whitespace+R06.quote-space
 19-html-inline.md,203783ad5af85e86,w176,p49,c35,u0,h2508,r0,b0,len3832,203783ad5af85e86,w176,p49,c35,u0,h2508,r0,b0,len3833,7076110092,1,2,R03.heading-spacing
 20-images-links.md,8f8b2993e71821a3,w234,p37,c4,u59,h551,r0,b0,len3871,8f8b2993e71821a3,w234,p37,c4,u59,h551,r0,b0,len3874,7076109300,3,2,R03.heading-spacing

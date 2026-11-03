@@ -1,4 +1,4 @@
-# mdfile fingerprint  engine=0.1.3
+# mdfile fingerprint  engine=0.1.4
 # 列：文件 | 输入正文指纹 | 优化后指纹 | 结构变化 | 正文变化 | 评分(综/标/段/列/空/密) | 规则链
 01-readme-nodejs.md a28695bf74ef4bdb:w47p10c438u3h0r0b1n942 a28695bf74ef4bdb:w47p10c438u3h0r0b1n942 0 0 89/76/82/100/100/100 -
 02-readme-rust.md aa9d41f597041214:w98p26c123u6h0r0b0n1020 aa9d41f597041214:w98p26c123u6h0r0b0n1020 0 0 88/100/55/100/100/100 -
@@ -16,7 +16,7 @@
 14-korean.md 67d6d2d381da5475:w176p20c107u2h0r0b0n971 67d6d2d381da5475:w176p20c107u2h0r0b0n965 2 0 97/100/91/100/100/100 R02.trailing-whitespace+R08.table-delimiter
 15-complex-code.md c2b6edeccbf81f1f:w32p5c7592u0h0r0b0n8032 c2b6edeccbf81f1f:w32p5c7592u0h0r0b0n8032 0 0 93/100/82/100/100/90 -
 16-complex-tables.md 0bc45b42956f99f2:w401p101c85u1h40r0b0n3406 0bc45b42956f99f2:w401p101c85u1h40r0b0n3249 13 0 97/100/91/100/100/100 R08.table-delimiter
-17-nested-lists.md 0ed311dacd98473b:w362p49c45u6h0r25b0n3118 0ed311dacd98473b:w362p49c45u6h0r25b0n3117 1 0 78/52/73/80/100/100 R02.trailing-whitespace
+17-nested-lists.md 0ed311dacd98473b:w362p49c45u6h0r25b0n3118 0ed311dacd98473b:w362p49c45u6h0r25b0n3115 2 0 78/52/73/80/100/100 R02.trailing-whitespace
 18-blockquotes-footnotes.md 295e2c5ffc7045f6:w404p59c123u1h172r21b0n3311 295e2c5ffc7045f6:w404p59c123u1h172r21b0n3286 16 0 73/76/19/100/100/100 R02.trailing-whitespace+R06.quote-space
 19-html-inline.md 203783ad5af85e86:w176p49c35u0h2508r0b0n3832 203783ad5af85e86:w176p49c35u0h2508r0b0n3833 1 0 70/76/10/100/92/100 R03.heading-spacing
 20-images-links.md 8f8b2993e71821a3:w234p37c4u59h551r0b0n3871 8f8b2993e71821a3:w234p37c4u59h551r0b0n3874 3 0 70/76/10/92/100/100 R03.heading-spacing

@@ -164,10 +164,16 @@ pub fn render(
         bs0 = outcome.guard.original.backslashes,
         bs1 = outcome.guard.candidate.backslashes,
         fmt = format!(
-            "BOM {} / 换行 {} / 统一 {}",
-            if outcome.body.starts_with('\u{feff}') { "有" } else { "无" },
-            "preserve",
-            "是"
+            "BOM {} / 换行 {}",
+            // v0.1.4：BOM 此前查的是语义层 body（TextLayer 早已剥离 BOM，恒为「无」），
+            // 现在查渲染字节的前三字节；换行风格也从字节实际内容判定，
+            // 不再写死 preserve（--newline lf/crlf/cr 时报告与产物曾自相矛盾）。
+            if body_bytes.starts_with(&[0xEF, 0xBB, 0xBF]) { "有" } else { "无" },
+            if body_bytes.contains(&b'\r') {
+                if body_bytes.windows(2).any(|w| w == b"\r\n") { "CRLF" } else { "CR" }
+            } else {
+                "LF"
+            }
         ),
         doc = esc(&rendered),
     )

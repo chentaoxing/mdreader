@@ -314,11 +314,16 @@ impl Rule for TrailingWhitespace {
                 continue;
             }
             let tail = &line.text[line.text.len() - line.trailing_ws..];
-            // CommonMark 硬换行：行尾恰好两个空格且下一行有内容
-            let hard_break = tail == "  "
+            // CommonMark 硬换行：**有内容的行**行尾两个或更多空格、且下一行继续同一段落。
+            // v0.1.4 之前只认恰好两个空格（tail == "  "），3+ 空格的硬换行被整段删掉，
+            // 与本规则自述「保留硬换行所需的两个空格」直接矛盾；
+            // 下一行白名单也缺 Html（`甲  \n<b>x</b> 乙` 的硬换行曾丢失）。
+            // 纯空白行（只有空格没有内容）不构成硬换行，照常清理。
+            let hard_break = line.text.len() > line.trailing_ws
+                && tail.ends_with("  ")
                 && matches!(
                     ctx.scan.kind_at(n + 1),
-                    Some(LineKind::Paragraph | LineKind::UlItem | LineKind::OlItem | LineKind::Quote)
+                    Some(LineKind::Paragraph | LineKind::UlItem | LineKind::OlItem | LineKind::Quote | LineKind::Html)
                 );
             if hard_break {
                 continue;
@@ -698,8 +703,16 @@ impl Rule for TableDelimiterNormalize {
             }
             let line = &ctx.scan.lines[n];
             let rebuilt = normalize_delimiter_row(&line.text);
-            if !rebuilt.is_empty() && rebuilt != line.text {
-                let mut e = Edit::replace(line.range.clone(), rebuilt, ChangeScope::Table, "规范表格分隔行");
+            // 只替换首个非空白字符起的区间，保留列表内表格的缩进
+            // （整行替换会把缩进一并吃掉，Guard 会拒掉整条编辑）。
+            let indent_len = line.text.len() - line.text.trim_start_matches([' ', '\t']).len();
+            if !rebuilt.is_empty() && rebuilt != &line.text[indent_len..] {
+                let mut e = Edit::replace(
+                    line.range.start + indent_len..line.range.end,
+                    &rebuilt,
+                    ChangeScope::Table,
+                    "规范表格分隔行",
+                );
                 e.kind = EditKind::Marker;
                 edits.push(e);
             }
@@ -766,11 +779,20 @@ impl Rule for ThematicBreakUnify {
                 // 陷阱：上一行是段落时，把 `***` / `___` 改成 `---` 会让它变成
                 // **setext 下划线**——段落被"提升"成标题、分隔线本身消失。
                 // 实测 `文字\n***\n正文` 会变成 `## 文字\n\n正文`，且 Guard 报「正文 0」
-                //（星号算结构符，不计内容 token）。无法安全统一 ⇒ 跳过。
+                // （星号算结构符，不计内容 token）。无法安全统一 ⇒ 跳过。
                 if n > 0 && matches!(ctx.scan.kind_at(n - 1), Some(LineKind::Paragraph)) {
                     continue;
                 }
-                let mut e = Edit::replace(line.range.clone(), "---", ChangeScope::Rule, "统一分隔线写法");
+                // v0.1.4 回归：整行替换会把缩进一并剥掉——`- 甲\n    ***\n乙` 曾被改成
+                // 无缩进的 `---`，分隔线从列表项内部逃逸到列表外，且 Rule 不产内容
+                // token，Guard 拦不住。只替换首个非空白字符起的区间。
+                let indent_len = line.text.len() - line.text.trim_start_matches([' ', '\t']).len();
+                let mut e = Edit::replace(
+                    line.range.start + indent_len..line.range.end,
+                    "---",
+                    ChangeScope::Rule,
+                    "统一分隔线写法",
+                );
                 e.kind = EditKind::Marker;
                 edits.push(e);
             }
@@ -862,9 +884,10 @@ impl Rule for ParallelSplit {
             if line.text.contains(['`', '[', ']', '<', '>', '|', '*', '_', '\\']) {
                 continue;
             }
-            // 含双引号的行同样跳过：换行插进字符串字面量里会直接破坏
-            // TOML / YAML 元数据与配置示例（实测 `+++` 区的 `title = "说明：甲、乙、丙"` 被拆行）。
-            if line.text.contains('"') {
+            // 含引号的行同样跳过：换行插进字符串字面量里会直接破坏
+            // TOML / YAML 元数据与配置示例（实测 `+++` 区的 `title = "说明：甲、乙、丙"` 被拆行；
+            // v0.1.4 补：单引号字面量 `title = '…'` 在未闭合 front matter 里同样被拆过）。
+            if line.text.contains(['"', '\'']) {
                 continue;
             }
             let Some((colon_rel, seps)) = parallel_structure(&line.text) else { continue };
@@ -907,8 +930,15 @@ fn parallel_structure(text: &str) -> Option<(usize, Vec<usize>)> {
                 break;
             }
             ':' => {
-                // 排除 `http:` 这类前一个字符是字母的半角冒号
-                if text[..i].chars().next_back().map(|c| c.is_ascii_alphabetic()).unwrap_or(false) {
+                // 排除前一字符是字母或数字的半角冒号：`http:` 是协议，
+                // `10:30:00` 是时间戳/比例/版本号——数字冒号被当切点会把它们撕开
+                // （v0.1.4 回归：`会议纪要 10:30:00、参会人：甲、乙、丙。`）。
+                if text[..i]
+                    .chars()
+                    .next_back()
+                    .map(|c| c.is_ascii_alphanumeric())
+                    .unwrap_or(false)
+                {
                     continue;
                 }
                 colon_rel = Some(i + ch.len_utf8());
@@ -1036,6 +1066,14 @@ mod tests {
     }
 
     #[test]
+    fn r09_keeps_indent_inside_lists() {
+        // v0.1.4 回归：整行替换曾把缩进一并剥掉，列表内的分隔线逃逸到列表外，
+        // 且 Rule 不产内容 token，Guard 拦不住。
+        let src = "- 甲\n    ***\n乙\n";
+        assert_eq!(ok(&ThematicBreakUnify, src), "- 甲\n    ---\n乙\n", "分隔线统一必须保留缩进");
+    }
+
+    #[test]
     fn r05_skips_multi_line_setext_heading() {
         let src = "标题一\n标题二\n===\n\n正文\n";
         assert_eq!(ok(&SetextToAtx, src), src, "多行 setext 转 ATX 会降级前半部分，必须原样保留");
@@ -1046,6 +1084,22 @@ mod tests {
     fn r11_never_splits_inside_a_quoted_string() {
         let src = "title = \"说明：甲、乙、丙\"\n";
         assert_eq!(ok(&ParallelSplit, src), src, "换行插进字符串字面量会破坏 TOML/YAML");
+        // v0.1.4 回归：单引号字面量在未闭合 front matter 里同样被拆过
+        let single = "title = '说明：甲、乙、丙'\n";
+        assert_eq!(ok(&ParallelSplit, single), single, "单引号字面量同样不得拆行");
+    }
+
+    #[test]
+    fn r11_never_splits_a_timestamp() {
+        // v0.1.4 回归：半角冒号前一字符是数字（时间戳/比例/版本号）曾被当切点
+        // 把 10:30:00 撕成 10\n30:00。修复后时间戳必须完整；
+        // 参会人：后的全角冒号仍是合法切点，正常分行。
+        let src = "会议纪要 10:30:00、参会人：甲、乙、丙。\n";
+        assert_eq!(
+            ok(&ParallelSplit, src),
+            "会议纪要 10:30:00、参会人：\n甲、\n乙、\n丙。\n",
+            "时间戳里的冒号不是并列切点，正常冒号仍分行"
+        );
     }
 
     #[test]
@@ -1063,9 +1117,16 @@ mod tests {
 
     #[test]
     fn r02_removes_trailing_but_keeps_hard_break() {
-        assert_eq!(ok(&TrailingWhitespace, "第一段   \n第二段\n\n第三段  \n"), "第一段\n第二段\n\n第三段\n");
+        // v0.1.4：CommonMark 硬换行是行尾 2+ 空格——3 空格与 2 空格同样必须保留
+        // （旧实现只认恰好两个，3+ 被整段删掉，与本规则自述矛盾）。
+        assert_eq!(ok(&TrailingWhitespace, "第一段   \n第二段\n"), "第一段   \n第二段\n", "三空格硬换行同样保留");
         let hard = "甲  \n乙\n";
         assert_eq!(ok(&TrailingWhitespace, hard), hard, "两空格硬换行必须保留");
+        // 下一行是内联 HTML（继续同一段落）：硬换行保留（旧白名单缺 Html 曾丢失它）
+        let html_next = "甲  \n<b>乙</b> 丙\n";
+        assert_eq!(ok(&TrailingWhitespace, html_next), html_next, "HTML 行前的硬换行保留");
+        // 下一行开新块（标题）：行尾空格无硬换行语义，删掉
+        assert_eq!(ok(&TrailingWhitespace, "甲  \n# 标\n"), "甲\n# 标\n", "标题前的行尾空格该删");
         let src = "```\ncode   \nx\n```\n";
         assert_eq!(ok(&TrailingWhitespace, src), src);
     }

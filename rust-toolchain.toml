@@ -1,0 +1,10 @@
+# 固定工具链（README 已知限制 #8 的落地）。
+# fingerprint 依赖 std 的 Unicode 表（is_whitespace / is_alphanumeric）切 token，
+# 工具链升级可能让五平台的指纹漂移出「不一致」。因此 pin 到验证过与
+# fingerprint-linux-baseline.txt 逐字节一致的版本：
+#   - 1.99.0（云端基线的生成版本）
+#   - 1.99.1（2026-10-24 Windows 本机复验：33 行数据与基线逐字节一致）
+# 升级 = 换版本号后在五平台重新生成指纹并全量 diff，绿了才允许提交。
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"

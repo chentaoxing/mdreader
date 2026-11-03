@@ -16,7 +16,7 @@
     <AssemblyName>MdFileAssistant</AssemblyName>
     <RootNamespace>MdFileAssistant</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.1.3</Version>
+    <Version>0.1.4</Version>
     <Product>MD文档阅读助手</Product>
     <!-- 资源管理器里 exe 的「文件说明」；程序集名与 C ABI 前缀 mdfile_* 暂时不动，
          它们牵动已注册的 .md 打开方式与四平台绑定命名 -->

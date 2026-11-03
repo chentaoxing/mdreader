@@ -17,7 +17,19 @@
 而且它不需要 AI。**排版与阅读全程离线**：不联网就能用，不上传任何内容、无账号、无 API Key、不埋点。
 唯一会出网的是「检查更新」——只向 GitHub 问一次"最新版是几点"，不带你机器上的任何东西；
 顶栏取消勾选「启动时检查」之后，就只有你点「检查更新」那一下才会联网。
-排版是确定性的事，所以结果可复现——同一份文件在你机器上和在别人机器上逐字节相同。
+排版是确定性的事，所以结果可复现——**同一个 Rust 核心，在五个平台对同一份文件逐字节给出同一结论**
+（本机实测对账 4/5：Windows / Linux / Android / 浏览器，平台明细见[文末状态表](#5-五平台状态诚实版)）。
+
+## 下载（v0.1.4）
+
+| 你在用什么 | 拿哪个 | 形态 |
+| --- | --- | --- |
+| Windows x64 | [portable.zip](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-0.1.4-portable.zip) | 图形界面，自包含解压即用 |
+| Android 8.0+ | [apk](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-0.1.4-android.apk) | 图形界面（arm64 / armv7 / x86_64），双击 .md 直接读 |
+| 任何有浏览器的设备 | [chentaoxing.github.io/mdreader](https://chentaoxing.github.io/mdreader/) | Web/WASM 版，在线用，也可存下离线用 |
+| Linux x86_64 | [musl tar.gz](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-cli-0.1.4-linux-x86_64-musl.tar.gz) | 命令行，静态链接零依赖（含 `libmdcore_ffi.a`） |
+| Windows on ARM | [arm64 zip](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-cli-0.1.4-windows-arm64.zip) | 命令行 |
+| macOS / iOS | 用上面的 Web 版 | 原生壳待 Apple 硬件到位 |
 
 ---
 
@@ -53,14 +65,16 @@ mdfile-cli check docs/*.md   # 任一份文件正文发生变化 => 退出码 1�
 - **写中文技术文档 / README 的人** —— 手写的、从 Notion/Obsidian 导出的、从 Word 转出来的，排版毛病各不相同
 - **做代码评审 / 读别人文档的人** —— 不改内容，所以不需要说服原作者接受你的文字偏好，只调读感
 - **笔记库重度用户** —— 支持递归批量处理整个目录，产物自动跳过，不会二次加工
-- **要把它嵌进自己产品的人** —— 核心是一个 C ABI 动态库（`mdfile_optimize` / `mdfile_analyze` / `mdfile_preview` / `mdfile_rebuild` / `mdfile_rules_json`），只吃字节、只吐 JSON，五个平台共用同一份算法，不会出现「Windows 上排版好、手机上乱掉」
+- **要把它嵌进自己产品的人** —— 同一份核心有三种门面：C ABI 动态库（`mdfile_*`，五平台同一份 `mdfile.h`）、Android JNI 信封、WebAssembly；只吃字节、只吐 JSON，不会出现「Windows 上排版好、手机上乱掉」
 
 **不太适合**：想要「一键润色改写」的、只关心渲染后网页样式的（那是 CSS 的事）、以及要求工具替你决定用词的。
 
 ## 30 秒上手
 
-Windows 图形界面：装好 .NET 10 后 `dotnet build -c Release`（`shell/win-wpf/`），双击打开的 .md 即进入阅读视图。
-命令行与核心引擎：
+**不想敲命令**：去[下载表](#下载v014)拿对应平台的包（Windows / Android 双击即用），
+或直接用[浏览器版](https://chentaoxing.github.io/mdreader/)拖文件。
+
+**命令行与核心引擎**：
 
 ```bash
 cargo build --release
@@ -98,9 +112,9 @@ Platform Independent」的可执行证明，而不是口头承诺。
 
 ```text
 mdlens/
-├── Cargo.toml                     # workspace：三个 crate，release 用 panic=unwind（FFI 需要 catch_unwind）
+├── Cargo.toml                     # workspace：核心三 crate + JNI 门面，release 用 panic=unwind（FFI 需要 catch_unwind）
 ├── crates/
-│   ├── mdcore/                    # 共享核心：no_std-able 逻辑层，零平台依赖
+│   ├── mdcore/                    # 共享核心：no_std-able 逻辑层，零平台依赖（wasm32/linux-musl/win-arm64 check 零改动通过）
 │   │   ├── src/text.rs            #   两层模型：语义内容层 vs 文件格式层（BOM/LF/CRLF/CR/结尾换行）
 │   │   ├── src/scan.rs            #   行级扫描：围栏状态机、front matter、表格上下文
 │   │   ├── src/model.rs           #   Block / Document 语义块模型（来自事件流，不回写 Markdown）
@@ -119,8 +133,13 @@ mdlens/
 │   ├── mdcore-ffi/                # C ABI 边界：状态码 + JSON 负载 + latin1 字节通道
 │   │   ├── src/lib.rs
 │   │   └── include/mdfile.h       #   五平台共用契约（Windows dll / macOS / Linux / Android JNI / iOS）
-│   └── mdfile-cli/                # 无头前端：analyze/optimize/diff/preview/rules/batch/check/report/fingerprint
-│       └── src/{main.rs,report.rs}
+│   ├── mdfile-cli/                # 无头前端：analyze/optimize/diff/preview/rules/batch/check/report/fingerprint
+│   │   └── src/{main.rs,report.rs}
+│   └── mdcore-jni/                # Android 门面：JNI 信封（JSON 进出），Kotlin 不碰裸指针
+├── shell/
+│   ├── win-wpf/                   # Windows 图形界面（.NET 10 WPF，P/Invoke 同一份 mdfile.h）
+│   ├── android/                   # Android 图形界面（Compose；SAF 打开/另存、三档显示、最近列表）
+│   └── web/                       # Web/WASM 界面（wasm-bindgen 信封 + 单页前端，gh-pages 在线可用的源码）
 ├── tests/corpus/                  # 32 份语料 + MANIFEST：README、GFM、表格、代码、Unicode 边界
 │                                   # 注意：MANIFEST 自己标注只有 3 份是真实下载（linux/typescript/flask），
 │                                   # 其余为「按真实 README 结构仿写」；对外的「33 份真实语料」说法不准确
@@ -135,12 +154,22 @@ mdlens/
 
 ## 2. 三十秒跑起来
 
+**普通用户**：上面的[下载表](#下载v014)里挑你的平台——Windows/Android 双击即用，
+浏览器版打开网页就能拖文件，一个命令都不用敲。
+
+**开发者 / 想挂在 CI 里**：
+
 ```bash
 cargo build --release
 ./target/release/mdfile-cli check tests/corpus/*.md      # 内容不变性回归门
 ./target/release/mdfile-cli optimize tests/corpus/02-readme-rust.md --preset 技术文档
 ./target/release/mdfile-cli report tests/corpus/02-readme-rust.md
 ```
+
+图形界面壳（可选）：Windows 在 `shell/win-wpf/`（`dotnet build`，需 .NET 10 + 把
+`target/release/mdcore_ffi.dll` 拷进 `Native/`）；Android 在 `shell/android/`
+（cargo-ndk + Gradle，详见其 README）；Web 在 `shell/web/`（wasm-pack + 任意静态服务器）。
+三个壳都不含一行排版判定——逻辑全部在 `mdcore` 与它的三个门面（C ABI / JNI / WASM）。
 
 `optimize` 只会新增 `02-readme-rust_阅读优化版.md` 与同名 `.json` 清单；重名时自动追加 `_2`，
 **永远不会写入原文件**。`report` 只新增一个完全离线的 HTML（无脚本、无外链、正文全部转义）。
@@ -206,50 +235,39 @@ cargo build --release
 
 ## 5. 五平台状态（诚实版）
 
-核心与 C ABI 是为五平台同时设计的，但**构建与验收状态分三档**，不要混淆：
+**现状矩阵（2026-11-01）**：同一份 mdcore 核心 + 三个门面（C ABI / JNI / WASM），
+一致性裁判始终是 `fingerprint` 对账（33 语料的正文校验和与基线逐字节比对）。
 
-### 已在本环境实测通过
+| 平台 | 形态 | 构建 | 一致性验证 |
+| --- | --- | --- | --- |
+| Windows x64 | WPF 图形界面 + CLI | 本机 MSVC | ✅ 实跑对账逐字节一致 |
+| Linux x86_64 | CLI + `libmdcore_ffi.a` | 本机交叉编译（rust-lld，musl 静态） | ✅ **本机 WSL 实跑对账零差异** |
+| Android 8.0+ | Compose 图形界面（arm64/armv7/x86_64） | cargo-ndk + Gradle | ✅ API 35 模拟器实跑对账逐字节一致 |
+| 浏览器（WASM） | 单页 Web 界面 | wasm-pack（wasm32-unknown-unknown） | ✅ node 直调对账 33/33 逐字节一致 |
+| Windows ARM64 | CLI | 本机交叉编译（VS ARM64 工具链） | 🟡 PE 头 `0xAA64` 验证；无真机，未运行验证 |
+| macOS / iOS | — | ❌ 需 Apple 硬件 | 浏览器版是目前的替代路径 |
 
-- Linux x86_64：`cargo test` 全绿（**187 项**：mdcore 154 + 架构守卫 4 + 语料金样 4 + FFI 15 + CLI/report 10；
-  2026-10-19 扩 Guard 可见范围后 +8 项）。
-- `mdfile-cli check tests/corpus/*.md` ⇒ 33 份语料全部通过，正文内容不变性 100%。
-- **Windows x86_64：本机用交叉工具链（x86_64-pc-windows-gnu）真实构建并运行**，
-  `fingerprint tests/corpus` 输出与 Linux **逐字节一致**；C ABI 用 Python ctypes 直调 `mdcore_ffi.dll` 验过
-  （状态码、BOM/CRLF 还原、全角空格保留、错误通道、释放契约）。五平台门目前是 **2/5 实测**，不是推定。
-- FFI 边界的真实 C 客户端验收代码已入仓库：`tools/ffi-acceptance/ffi_client_test.c`（`./run.sh` 或 `./run.sh docker`）。
-- 中文/边界探针：`tools/probes/probe.sh`、`tools/probes/probe2.sh`（全角空格、NBSP、`+++` 元数据、`***` 分隔线陷阱、
-  多行 setext、`$$` 公式、NUL、CRLF/BOM 逐字节还原）。
+**4/5 实测**指前四行——四套构建路径、四种运行时，同一份文件的指纹逐字节相同。
+这不是推定，每一行都能在本机复现（命令见 `shell/*/README.md` 与 `tools/`）。
+
+<details>
+<summary>历史验证记录（0.1.0–0.1.4 期间的细节）</summary>
+
+- Linux x86_64：`cargo test` 全绿（0.1.4 起 **195 项**）；云端基线
+  `fingerprint-linux-baseline.txt` 由该环境生成。
+- Windows x64：交叉工具链（x86_64-pc-windows-gnu）与本机 MSVC 两种路径都跑过
+  `fingerprint`，与 Linux 逐字节一致；C ABI 用 Python ctypes 直调 `mdcore_ffi.dll` 验过
+  （状态码、BOM/CRLF 还原、全角空格保留、错误通道、释放契约）。
+- FFI 边界的真实 C 客户端验收代码：`tools/ffi-acceptance/ffi_client_test.c`。
+- 中文/边界探针：`tools/probes/probe.sh`、`probe2.sh`（全角空格、NBSP、`+++` 元数据、
+  `***` 分隔线陷阱、多行 setext、`$$` 公式、NUL、CRLF/BOM 逐字节还原）。
 - 金样复现性：`LC_ALL=zh_CN.UTF-8` 与不同 `RUST_MIN_STACK` 下 `GOLDEN.csv` 完全一致；
   4 线程并发与单线程顺序结果一致。
+- 代替性证明（历史上无法多平台运行时使用）：`architecture_guard.rs` 源码级扫描 +
+  `fingerprint` 探针 + `GOLDEN.csv`。它拦不住花式写法（如 `#[cfg(all(unix, target_arch = "x86_64"))]`），
+  所以是**辅助**，裁判始终是 `fingerprint` 逐字节对比——如今这一裁判已在四个平台真实跑过。
 
-### 已具备能力、但尚未在真机验证
-
-- Android / iOS / macOS 目标：**没有跨目标编译产物可展示**（构建环境里 `rustup target add` 拿不到镜像）。
-  **本机更新（2026-10-08）：Windows 一档已不再是「无法验证」** —— 用 `x86_64-pc-windows-gnu` 交叉构建出
-  `mdfile-cli.exe` 与 `mdcore_ffi.dll`，在真机上跑 `check`（33/33）与 `fingerprint`，
-  输出与 Linux 逐字节一致；C ABI 另用 Python ctypes 直调 DLL 验过。五平台门为 **2/5 实测**。
-- 代替性证明：`architecture_guard.rs` 源码级扫描 ＋ `fingerprint` 探针 ＋ `GOLDEN.csv`。
-  注意这条守卫本身有过死规则（比对前源码被转小写，而 `SystemTime`/`Instant::now`/`File::open`/`File::create`/
-  `Command::new` 五个模式带大写 ⇒ 永不触发），已修并加了「守卫的守卫」测试；
-  它仍然拦不住 `use std::{fs, env};` 以外的花式写法（如 `#[cfg(all(unix, target_arch = "x86_64"))]`），
-  所以它是**辅助**，跨平台一致性的裁判始终是 `fingerprint` 逐字节对比。
-
-### 尚未实现（需要本机工具链）
-
-- **Windows 壳已落地**：`shell/win-wpf/`（.NET 10 WPF，P/Invoke 同一份 `mdfile.h`）。
-  做四件事：打开 .md（含双击/「打开方式」传入）、阅读视图、逐条接受或拒绝改动（走核心 `mdfile_rebuild`）、
-  另存为 `原名_阅读优化版.md`。
-  **UI 不参与任何落盘字节的决定**：要不要改、改哪儿、能不能改，全部来自核心返回的 JSON 与 `rendered`。
-  阅读视图只决定屏幕上怎么摆——把硬换行接回整句、行长封顶（约 40 个汉字）、标题层级与节奏、
-  列表悬挂缩进、引用块、代码块、表格在隐藏档画成真表格；语法符号分原样 / 弱化 / 隐藏三档。
-  这一层没有任何写文件的路径，切换模式与滚动之后源文件 md5 不变（已实测）。
-  详见 `shell/win-wpf/README.md`，可复现的两份样例文档在 `shell/win-wpf/samples/`。
-- 其余三个壳：macOS(AppKit/SwiftUI)、Linux(GTK4)、Android(Compose)、iOS(SwiftUI) 仍未实现。
-  它们只做「文件选择 + 调 `mdfile.h` + 渲染结构化数据 + 接受/拒绝按钮」，逻辑一行都不写在 UI 里。
-- Tauri / Flutter 桌面壳：缺少 WebKitGTK/GTK 依赖的环境装不起来；建议在 **Windows** 上优先做
-  Tauri v2（MSVC + WebView2 自带），macOS/Linux 复用同一份前端。
-
----
+</details>
 
 ## 6. 把工程落到本机后各平台怎么构建
 
@@ -322,7 +340,8 @@ mdfile-cli check tests/corpus/*.md
 - 3.6 MB 单文件全量优化：约 3.1 秒（修复了三处 O(n²)：snippet 逐次重建行索引、
   去重的线性 `contains`、代码块上下界双搜索）。小文件 2 ms 级。
 - 行索引 `Lines` 建一次、区间查询 O(log n)；代码块判定改成 O(n) 掩码。
-- 输入上限在 FFI 层显式声明为 64 MiB（`MAX_INPUT_BYTES`），超限返回状态码而非崩溃；
+- 输入上限 64 MiB 的唯一执行点在 `mdcore::io::OpenDocument::from_bytes`（`mdfile.h` 的
+  `MDFILE_MAX_INPUT_BYTES` 引用的同一常量）；CLI 在读盘前另有大小预检。超限返回状态码而非崩溃；
   大文件应在 UI 层走后台线程 + 进度取消（`pipeline::Cancel`）。
 
 ---
@@ -330,8 +349,10 @@ mdfile-cli check tests/corpus/*.md
 ## 9. 已知限制（不粉饰）
 
 1. 未实现第十九/二十章的原始形态，理由见第 4 节；等你签字决定要不要放宽「内容不变」。
-2. 交付物里**只有 Linux 桌面二进制**可直接运行；其余四平台的可执行文件必须在你的机器上构建
-   （拿不到交叉工具链 / Android SDK / Xcode / WebKitGTK）。
+2. ~~交付物里**只有 Linux 桌面二进制**可直接运行~~ **2026-11-01 已扩**：release 现含
+   Windows x64（portable.zip）、Windows ARM64 CLI（交叉编译，未真机验证）、
+   Linux x86_64 musl CLI（交叉编译 + **本机 WSL 实跑对账通过**）、Android APK、
+   Web/WASM（在线）。macOS/iOS 原生包仍需 Apple 硬件。
 3. 没有 GUI。`report` 生成的 HTML 是「展示层用结构化数据」的示例实现，不是最终产品界面。
 4. `is_optimized_output` 依赖本工具的命名约定；用户手工改名成别的名字仍会被当普通文件处理。
 5. 评分是启发式提示，不构成质量保证；分数上升不代表「更好读」这一主观判断成立。
@@ -348,8 +369,9 @@ mdfile-cli check tests/corpus/*.md
    其余四个平台还没做这一层，中文 Windows 用户的老文件在它们上目前仍会被拒。
 7b. `fingerprint` 输出的**第一行带引擎版本号**（`# mdfile fingerprint  engine=0.1.1`），33 行数据才是要逐字节比的东西。跨版本 diff 基线时会看到这一行变动，那不是不一致；比对时要么连头一起同版本生成，要么只比数据行。
 8. 指纹依赖 `std` 的 Unicode 表（`is_whitespace` / `is_alphanumeric`）来切 token，因此**理论上也依赖工具链版本**：
-   仓库没有 `rust-toolchain.toml` 固定，五平台各自的新旧 rustc 一旦 Unicode 表升级就可能漂移出「不一致」。
-   本机在 rustc 1.99.0 下与云端基线逐字节一致，但这条只是「目前没出事」，不是保证。建议后续显式 pin。
+   ~~仓库没有 `rust-toolchain.toml` 固定~~ —— **2026-10-24（v0.1.4）已固定 1.99.1**：
+   1.99.0（云端基线生成版本）与 1.99.1（Windows 本机）双向验证指纹逐字节一致。
+   升级 pinned 版本前必须在全部平台重跑指纹对账，绿了才允许提交。
 9. ~~Content Guard 看不见脚注引用与任务列表标记~~ —— **2026-10-19 已扩**（用户签字「扩」）：
    `tokenize()` 现在为 `[^1]`（引用与定义标签）和 `- [ ]` / `- [x]` 各发射一个 `Ref` token，
    吃掉编号或丢掉勾选状态都会当场拒绝该规则。实测代价为零改动输出：33 份语料里只有 3 份的
