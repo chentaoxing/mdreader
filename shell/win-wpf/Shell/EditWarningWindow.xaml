@@ -18,13 +18,13 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="!" FontSize="46" FontWeight="Bold" Foreground="{DynamicResource WarnInk}"
                                VerticalAlignment="Center" Margin="0,0,18,0" Width="34" TextAlignment="Center"/>
-                    <TextBlock Text="开编辑不会动你的源文件——保存默认写到旁边一个新文件。" FontSize="30" FontWeight="Bold"
+                    <TextBlock x:Name="LblHead" FontSize="30" FontWeight="Bold"
                                Foreground="{DynamicResource WarnInk}" TextWrapping="Wrap" MaxWidth="680"
                                VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
-            <TextBlock Margin="2,22,0,0" FontSize="21" LineHeight="32" TextWrapping="Wrap"
-                       Foreground="{DynamicResource TextPrimary}"><Run Text="左栏从此可以打字。你改的内容，按"/><Run Text="「另存为新文件」" FontWeight="Bold"/><Run Text="写到原件旁边，原件一个字节都不动。想直接写回原件，得去「设置」里把保存目标改成「覆盖源文件」——那是另一个决定。"/></TextBlock>
+            <TextBlock x:Name="LblLead" Margin="2,22,0,0" FontSize="21" LineHeight="32" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextPrimary}"/>
             <TextBlock Margin="2,14,0,0" FontSize="19" LineHeight="30" TextWrapping="Wrap"
                        Foreground="{DynamicResource StatusFg}"><Run Text="这个软件平时只做一件事：把同一份内容换个人能读的排法显示出来，一个字节都不写回去。编辑是唯一的例外，所以它要你亲手开，而且每次启动都是关着的。"/></TextBlock>
         </StackPanel>
@@ -34,21 +34,18 @@
             <StackPanel>
                 <TextBlock FontSize="18" FontWeight="Bold" Foreground="{DynamicResource WarnInk}"
                            Margin="0,0,0,10" Text="开启之后："/>
-                <TextBlock Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
-                           Foreground="{DynamicResource TextPrimary}"
-                           Text="· 左栏变成可输入。改动要点「另存为新文件」才落盘，落在原件旁边一个带时间的新文件；不点就什么都没发生。"/>
-                <TextBlock Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
-                           Foreground="{DynamicResource TextPrimary}"
-                           Text="· 只有你在「设置」里把保存目标改成「覆盖源文件」，才会真的写回原件——那之前会先复制一份 .bak（已存在就不覆盖），并且落盘前重读磁盘核对。"/>
+                <TextBlock x:Name="LblSaveBullet" Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextPrimary}"/>
+                <TextBlock x:Name="LblOverwriteBullet" Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextPrimary}"/>
                 <TextBlock x:Name="LblArc" Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextPrimary}"
                            Text="· 开着编辑时会定时把当前内容写一份到缓存目录（本地应用数据下的 MdFileAssistant\autosave），关软件、崩溃都找得回来。间隔、目录、留几份都在「设置」里。"/>
                 <TextBlock Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextPrimary}"
                            Text="· 写回按原编码：UTF-8 / UTF-16 / GBK / GB18030 都不转码；那个编码装不下的字，宁可拒绝写也不会换成问号。"/>
-                <TextBlock Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
-                           Foreground="{DynamicResource TextPrimary}"
-                           Text="· 落盘前会重读一次磁盘。文件在你打开之后被别的程序改过，就拒绝写，让你先决定。"/>
+                <TextBlock x:Name="LblConflictBullet" Margin="14,0,0,11" FontSize="18" LineHeight="27" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextPrimary}"/>
                 <TextBlock Margin="14,0,0,0" FontSize="18" LineHeight="27" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextPrimary}"
                            Text="· 换行风格与 BOM 保持原样，不会因为「保存」这两个字顺手把整份文件的行尾重写一遍。"/>

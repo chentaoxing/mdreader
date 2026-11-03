@@ -432,6 +432,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _editDebounce;
     private DispatcherTimer? _autoArc;        // 定时把没保存的内容写一份到缓存目录
     private string _lastArchived = "";        // 上一次写进缓存的内容，一样的就别再抄一份
+    private string? _lastArchivedPath;        // 那份存档落在哪儿，内容没变时直接报这个路径
 
     private void OnEdit(object s, RoutedEventArgs e)
     {
@@ -493,12 +494,13 @@ public partial class MainWindow : Window
         BtnEdit.Content = on ? "编辑：开（点这里关闭）" : "编辑：关";
         BtnSaveSrc.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         BtnSaveSrc.IsEnabled = false;
-        BtnSaveSrc.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        BtnSaveSrc.IsEnabled = false;
         RefreshEditUi();
-        if (!on) { _editDebounce?.Stop(); _autoArc?.Stop(); _lastArchived = ""; return; }
+        // 手动改 _lastArchived 的地方一律把路径一起清掉：留着上一轮（甚至上一个文件）的存档路径，
+        // 下面的"内容一样就别再抄"会报出一个不相干的文件名。
+        if (!on) { _editDebounce?.Stop(); _autoArc?.Stop(); _lastArchived = ""; _lastArchivedPath = null; return; }
 
         _lastArchived = _srcText;             // 从这一刻起，只有内容真的又变了才再抄一份
+        _lastArchivedPath = null;
 
         _editDebounce ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _editDebounce.Tick -= OnEditDebounce;
@@ -653,6 +655,10 @@ public partial class MainWindow : Window
     private (string? Path, string? Error) WriteCacheCopy()
     {
         if (string.IsNullOrWhiteSpace(_path)) return (null, "没有打开的文件，缓存没地方写");
+        // 内容跟上一次存档一样就别再抄一份：定时器刚存过、用户马上点关闭（或关编辑）时，
+        // 缓存目录里会躺着两份一模一样的文件。指回已有那份，说的话还是真的。
+        if (_srcText == _lastArchived && _lastArchivedPath != null && File.Exists(_lastArchivedPath))
+            return (_lastArchivedPath, null);
         try
         {
             var dir = _settings.CacheDirOrDefault;
@@ -668,6 +674,8 @@ public partial class MainWindow : Window
             }
             File.WriteAllBytes(full, bytes);
             PruneCache(dir, stem);
+            _lastArchived = _srcText;
+            _lastArchivedPath = full;
             return (full, null);
         }
         catch (Exception ex) { return (null, ex.Message); }
@@ -692,8 +700,7 @@ public partial class MainWindow : Window
     {
         if (!_editOn || !_dirty) return;              // 没改动就不制造一堆一样的缓存
         if (_srcText == _lastArchived) return;        // 内容没再变就别每分钟抄一份同样的
-        var (p, err) = WriteCacheCopy();
-        if (p != null) _lastArchived = _srcText;
+        var (p, err) = WriteCacheCopy();              // 写成了它自己会记下内容与路径，这里不再另记一份
         LblStatus.Text = p != null
             ? "◦ 自动存档已写入缓存：" + Path.GetFileName(p) + " · 左栏的改动还没落盘"
             : "✗ 自动存档没写进去（" + err + "）——改动只在屏幕上，还没保存。";
