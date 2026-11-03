@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace MdFileAssistant.Shell;
@@ -30,6 +31,30 @@ public static class FileAssociation
 
     private static string RegExe =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "reg.exe");
+
+    // 写完注册表必须广播一次，否则已经跑着的程序（豆包、资源管理器、任何调
+    // SHAssocEnumHandlers 的第三方壳）会拿它自己缓存的那份关联表，
+    // 用户点了「注册」却在下拉里看不到我们。实测：不广播时新进程能枚举到我们，
+    // 常驻进程不一定。
+    [DllImport("shell32.dll")]
+    private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+    private const int ShcneAssocChanged = 0x08000000;
+    private const uint ShcnfIdList = 0x0000;
+
+    private static string NotifyAssocChanged()
+    {
+        try
+        {
+            SHChangeNotify(ShcneAssocChanged, ShcnfIdList, IntPtr.Zero, IntPtr.Zero);
+            return "✓ 已通知系统刷新文件关联缓存";
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine("SHChangeNotify 失败：" + e.Message);
+            return "✗ 刷新关联缓存的通知没发出去（" + e.Message + "），已注册的项仍然有效，" +
+                   "但已经开着的其他程序可能要重启后才能看到。";
+        }
+    }
 
     /// <summary>用 ArgumentList 传参：引号由运行时按标准规则转义，不手搓字符串拼接。</summary>
     private static (int Code, string Out) Run(params string[] args)
@@ -83,6 +108,7 @@ public static class FileAssociation
             log.AppendLine($"{(code == 0 ? "✓" : "✗")} {name}{(code == 0 ? "" : "（失败）")}");
         }
         log.AppendLine($"打开方式条目数：{before} -> {CountOpenWith()}");
+        log.AppendLine(NotifyAssocChanged());
         log.AppendLine("下一步：在弹出的系统设置里，把「MD文档阅读助手」设为 .md 的默认应用（这一步只能你亲手点）。");
         log.AppendLine($"撤销：在本程序里点同一个按钮选「撤销」，或运行 reg delete \"{ProgKey}\" /f");
         return log.ToString();
@@ -106,6 +132,7 @@ public static class FileAssociation
         log.AppendLine($"{(d1.Code == 0 ? "✓" : "✗")} 删除 ProgID 键");
         log.AppendLine($"{(d2.Code == 0 ? "✓" : "✗")} 从 .md 打开方式列表移除");
         log.AppendLine($"打开方式条目数：{before} -> {CountOpenWith()}");
+        log.AppendLine(NotifyAssocChanged());
         return log.ToString();
     }
 

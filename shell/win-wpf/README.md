@@ -155,13 +155,30 @@ u64 是 19 位十进制，超过 2^53，用数字比会丢末位。取不到校�
 重跑核心，把返回的 `rendered` 与写出的文件比对：**3,950 字节完全相同**，正文校验和前后一致，
 源文件 md5 未变。界面写盘这条路到此闭环。
 
-**「设为 .md 打开方式」也被真人点过**：`HKCU\Software\Classes\MdFileAssistant.Markdown` 已存在，
-`shell\open\command` 指向本 exe。两点要记着：① 它注册的是**当前构建输出目录里的 exe 路径**，
-正式发布前必须装到固定目录再注册，否则一删 `bin/` 就打不开；② 那次注册写进去的显示名还是旧名
-「MD 文件助手」，同一个按钮点一次「撤销」再「注册」就会刷新成「MD文档阅读助手」——
-注册表在你机器上，我不代点。
+**「设为 .md 打开方式」的注册项已核对**：`HKCU\Software\Classes\MdFileAssistant.Markdown` 存在，
+ProgID 显示名是「MD文档阅读助手」，`shell\open\command` 指向本 exe。两点要记着：① 它注册的是**当前构建输出目录里的 exe 路径**，
+正式发布前必须装到固定目录再注册，否则一删 `bin/` 就打不开；② 这个键会被「撤销」清掉，
+2026-11-03 复查时它就不在了——所以别把"我们注册过"当成永久状态，用之前先看键在不在。
+
+### 别的软件（豆包等）的「打开方式」列表从哪来
+
+豆包桌面端的那个下拉不是它自己维护的白名单。它的二进制里有 `SHAssocEnumHandlers`，日志
+（`%LOCALAPPDATA%\Doubao\User Data\sdk_storage\log\saman_*.log`）里每次开菜单都会打一行
+`[open_with] QueryOpenWithApps ext=md, count=N`，并为每个 handler 打 `[open_with] icon location=[...]`。
+也就是说：**它问的是 Windows 的 handler 枚举，我们没注册，它就不可能列出来。**
+
+用同一个 API 在本机实测（`ASSOC_FILTER_RECOMMENDED`）：注册前 10 项，注册后 12 项，
+新增的是我们和一条 `GetName` 直接失败的悬空项；`ui` 名依次是
+Obsidian / WorkBuddy / ima / DingTalkDoc / Antigravity IDE / Muses / QQ浏览器 / Trae CN /
+cmd / **MD文档阅读助手** / 记事本。豆包界面只露出其中 5 条，它自己还有一层过滤
+（二进制里有 `saman-open-with:browser`、`saman-open-with:image-viewer` 和
+`[open_with] open rejected: filtered app`），这层归它，我们改不了。
+
+所以注册这一步之外，代码里补了 `SHChangeNotify(SHCNE_ASSOCCHANGED)`：注册和撤销都广播一次。
+不广播的话，已经开着的程序可能一直拿自己缓存的那份关联表——新起的进程能看到我们，常驻进程不一定。
 
 仍未机器验证：**撤销注册**那条分支（代码审查过：删之前会核对 open command 确实指向本程序，不是就拒绝删）。
+
 
 顺带说清楚这条链的两段：`rendered_latin1` 的字节还原在核心侧有验收（`tools/ffi-acceptance/` 的 C 客户端
 与 Windows 上的 ctypes 都逐字节比过）；「界面把这段字节写到用户选的路径」这一段，现在也有人对账过了——
