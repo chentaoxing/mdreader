@@ -182,14 +182,13 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// 标题栏与任务栏用的是同一个字符串：Win32 没有给普通窗口"任务栏单独显示别的文字"的入口，
-    /// 任务栏按钮和它的预览卡片读的就是窗口标题。所以这里一改，两处一起变。
-    /// 没打开文件时保持纯产品名，别挂一个空文件名。
+    /// 任务栏按钮和它的预览卡片读的就是窗口标题。所以要任务栏短，只能让标题本身短——
+    /// 照资源管理器的做法：打开文件后标题就只有文件名，产品名不挂在前面（挂上去任务栏读起来太长）。
+    /// 没打开文件时仍是产品名，别留一个空标题栏。
     /// </summary>
     private void ApplyTitle()
     {
-        Title = string.IsNullOrWhiteSpace(_path)
-            ? "MD文档阅读助手"
-            : "MD文档阅读助手 · " + Path.GetFileName(_path);
+        Title = string.IsNullOrWhiteSpace(_path) ? "MD文档阅读助手" : Path.GetFileName(_path);
     }
 
     private double Scale
