@@ -147,6 +147,7 @@ public partial class MainWindow : Window
         _path = path;
         _original = bytes;
         LblFile.Text = Path.GetFileName(path);
+        ApplyTitle();
 
         var dec = TextDecode.Decode(bytes);
         if (dec == null)
@@ -177,6 +178,18 @@ public partial class MainWindow : Window
 
         Run();
         if (_editOn) SetEdit(false);      // 换文件就回到只读：编辑不跨文件，也不被记住
+    }
+
+    /// <summary>
+    /// 标题栏与任务栏用的是同一个字符串：Win32 没有给普通窗口"任务栏单独显示别的文字"的入口，
+    /// 任务栏按钮和它的预览卡片读的就是窗口标题。所以这里一改，两处一起变。
+    /// 没打开文件时保持纯产品名，别挂一个空文件名。
+    /// </summary>
+    private void ApplyTitle()
+    {
+        Title = string.IsNullOrWhiteSpace(_path)
+            ? "MD文档阅读助手"
+            : "MD文档阅读助手 · " + Path.GetFileName(_path);
     }
 
     private double Scale
