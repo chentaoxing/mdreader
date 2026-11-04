@@ -1,6 +1,6 @@
 [package]
 name = "mdcore-wasm"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "MD文档阅读助手核心的 WASM 门面：只吃字节、只吐 JSON 信封，UI 判定一行不在这里"
 
