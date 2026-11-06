@@ -120,9 +120,13 @@ public static class ReadingRenderer
         PagePadding = new Thickness(22, 18, 22, 30),
         TextAlignment = TextAlignment.Left,
         // 行长上限：窗口再宽也不让一行跑到眼睛跟不上的地方。这是阅读视图唯一的「版式硬约束」。
-        // 按标准字号算约 40 个汉字一行；字号放大时上限同步放大，保持同样的字数。
+        // 字号放大时上限同步放大，保持同样的字数。
+        //
+        // 这里原来还写了一行 `ColumnWidth = 880 * sc`，那是个真 bug：ColumnWidth 是"定宽"，
+        // 不是"上限"。默认 1240 宽的窗口里右栏只有 ~560px，正文却被按 880 排版，
+        // 超出的一截直接裁在窗口边上——每行末尾几个字永远看不见
+        // （实测截图：「三条线（推」到这里就断了）。上限交给 MaxPageWidth，栏宽跟着容器走。
         MaxPageWidth = 880 * sc,
-        ColumnWidth = 880 * sc,
     };
 
     private static double Px(double v, double sc) => Math.Round(v * sc * 2) / 2;
@@ -539,20 +543,25 @@ public static class ReadingRenderer
 
     // ---- 段内合并（只在屏幕上把硬换行接回去，文件里的换行一个字节都没动） ----
 
-    private static string Join(List<string> lines)
+    /// <summary>
+    /// 段内接行。公开是为了 tests/reading-join 能拿真函数断言，不是留给业务调的。
+    /// </summary>
+    public static string Join(List<string> lines)
     {
         if (lines.Count == 0) return "";
         if (lines.Count == 1) return lines[0];
         var sb = new StringBuilder();
         for (int k = 0; k < lines.Count; k++)
         {
-            var cur = lines[k].Trim();
+            var cur = TrimHardBreakMarker(lines[k].Trim());
             if (k > 0)
             {
                 var prev = lines[k - 1];
                 var p = prev.TrimEnd();
-                bool hard = prev.EndsWith("  ") || prev.EndsWith("\\") || p.EndsWith("<br>") || p.EndsWith("<br/>");
-                if (hard) sb.Append('\n');
+                // 只有"末尾正好一个反斜杠"才是硬换行记号；两个是转义出来的字面反斜杠，不分行
+                bool hard = prev.EndsWith("  ") || TrailingBackslashes(p) == 1
+                            || p.EndsWith("<br>") || p.EndsWith("<br/>");
+                if (hard || KeepsBreak(p, cur)) sb.Append('\n');
                 else if (p.Length > 0 && cur.Length > 0 && IsCjk(p[^1]) && IsCjk(cur[0])) { /* 汉字之间不补空格 */ }
                 else sb.Append(' ');
             }
@@ -560,6 +569,47 @@ public static class ReadingRenderer
         }
         return sb.ToString();
     }
+
+    /// <summary>
+    /// 行尾单个反斜杠是 Markdown 的硬换行记号，作用已经被上面那个 '\n' 兑现了，
+    /// 本身不该再上屏——不然同样写硬换行，行尾两空格那种会被吃掉，这种却留个 `\` 在句末。
+    /// 成对的 `\\` 是转义出来的字面反斜杠，不动。
+    /// </summary>
+    private static string TrimHardBreakMarker(string s)
+        => TrailingBackslashes(s) == 1 ? s[..^1] : s;
+
+    /// <summary>数一行末尾连着几个反斜杠（用来区分"硬换行记号"和"转义出来的字面反斜杠"）。</summary>
+    private static int TrailingBackslashes(string s)
+    {
+        int n = 0;
+        for (int i = s.Length - 1; i >= 0 && s[i] == '\\'; i--) n++;
+        return n;
+    }
+
+    /// <summary>
+    /// 有些换行不是"一句话被折成两行"，接回去会把并列结构抹平成一段喘不上气的话。
+    /// 两类必须保留：
+    /// ① 两行都是「短标签：值」的字段行（标题：… / 封面小字：… / 话题标签：…）——它们本来就是并列字段；
+    /// ② 上一行以顿号或分号收尾——核心 R11「并列项分行」插的就是这种换行，
+    ///    显示层再把它接回去，改动清单会写着"10 处生效"而屏幕上一个字都没变。
+    /// </summary>
+    private static bool KeepsBreak(string prevTrimmed, string curTrimmed)
+    {
+        if (prevTrimmed.Length == 0 || curTrimmed.Length == 0) return false;
+        char last = prevTrimmed[^1];
+        if (last is '、' or '；') return true;
+        return IsFieldLine(prevTrimmed) && IsFieldLine(curTrimmed);
+    }
+
+    /// <summary>
+    /// 「短标签：值」的一行。标签限定 1~12 个非空白、非标点的字符，且不能以数字开头——
+    /// 这样 `10:30-20:00`、`http://…` 这类时间戳与协议不会被当成分行依据。
+    /// </summary>
+    private static readonly Regex FieldRx = new(
+        @"^(?!^\d)[^：:，。；、！？\s]{1,12}[：:]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static bool IsFieldLine(string s) => FieldRx.IsMatch(s);
 
     /// <summary>中日韩与全角字符：这些字符之间接行时不补空格，否则中文里会多出缝来。</summary>
     private static bool IsCjk(char c) =>

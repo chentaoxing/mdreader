@@ -92,8 +92,12 @@
                             <TextBlock x:Name="LblOutMeta" DockPanel.Dock="Right" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}" FontSize="12"/>
                         </DockPanel>
                     </Border>
+                    <!-- 横向滚动必须关死：Auto 会让文档拿到"无限宽"，于是正文按 880 排版、
+                         窄窗口里行尾整个跑到可视区外（默认 1240 宽的窗口右栏只有 ~560px，
+                         等于每行末尾十几个字都要横向滚才看得见）。关掉之后文档跟着栏宽折行，
+                         880 只在更宽的窗口里当行长上限用。 -->
                     <FlowDocumentScrollViewer x:Name="ViewOut" IsToolBarVisible="False" VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Auto" Background="{DynamicResource PanelBg}"
+                                              HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource PanelBg}"
                                               SelectionBrush="{DynamicResource Selection}" AutomationProperties.Name="阅读视图"/>
                 </DockPanel>
             </Border>

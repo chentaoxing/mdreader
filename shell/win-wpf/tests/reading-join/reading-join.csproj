@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    阅读视图「段内接行」的验收。之前只有真点开一份文档才看得出它对错，所以钉成测试：
+    引用 shell/win-wpf/Reading/ReadingRenderer.cs 正本，直接调它自己的 Join。
+    需要 WPF（Join 的调用方是 FlowDocument 渲染器），所以目标框架带 -windows。
+    退出码 = 失败项数，0 就是全绿。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../Reading/ReadingRenderer.cs" />
+    <!-- 渲染器取色走 Theme.ThemeManager（Join 本身不碰颜色，但这一个编译单元离不开它） -->
+    <Compile Include="../../Theme/ThemeManager.cs" />
+  </ItemGroup>
+
+</Project>
