@@ -13,3 +13,7 @@ shell/win-wpf/publish/
 # mimosa 扫描器本地状态
 .mimosa/
 **/.mimosa/
+
+# Android/Gradle 构建产物
+shell/android/.kotlin/
+shell/android/local.properties

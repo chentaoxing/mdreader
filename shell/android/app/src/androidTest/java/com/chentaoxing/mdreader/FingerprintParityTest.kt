@@ -54,6 +54,6 @@ class FingerprintParityTest {
 
     @Test
     fun engineVersionMatchesRelease() {
-        assertEquals("0.1.4", MdCore.engineVersion)
+        assertEquals("0.2.3", MdCore.engineVersion)
     }
 }

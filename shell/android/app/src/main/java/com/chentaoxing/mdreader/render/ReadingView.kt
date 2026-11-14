@@ -143,6 +143,71 @@ private fun splitRow(t: String): List<String> {
     return s.split("|").map { it.trim() }
 }
 
+// ---- 段内接行（移植自 Windows 壳 ReadingRenderer.Join，2026-11-05 三条修复同步带上） ----
+
+/** 段内接行。公开是给单元测试拿正本断言用，不是留给业务调的。 */
+fun joinPara(lines: List<String>): String {
+    if (lines.isEmpty()) return ""
+    if (lines.size == 1) return trimHardBreakMarker(lines[0].trim())
+    val sb = StringBuilder()
+    for (k in lines.indices) {
+        val cur = trimHardBreakMarker(lines[k].trim())
+        if (k > 0) {
+            val prev = lines[k - 1]
+            val p = prev.trimEnd()
+            // 只有"末尾正好一个反斜杠"才是硬换行记号；两个是转义出来的字面反斜杠，不分行
+            // 行尾两空格要看未 trim 的原始行，trimEnd 会把记号吃掉
+            val hard = prev.endsWith("  ") || trailingBackslashes(p) == 1 ||
+                p.endsWith("<br>") || p.endsWith("<br/>")
+            if (hard || keepsBreak(p, cur)) sb.append('\n')
+            else if (p.isNotEmpty() && cur.isNotEmpty() && isCjk(p.last()) && isCjk(cur.first())) {
+                // 汉字之间不补空格
+            } else sb.append(' ')
+        }
+        sb.append(cur)
+    }
+    return sb.toString()
+}
+
+/** 行尾单个反斜杠是硬换行记号，兑现成换行后自身不上屏；成对 `\\` 是字面反斜杠，不动。 */
+private fun trimHardBreakMarker(s: String): String =
+    if (trailingBackslashes(s) == 1) s.dropLast(1) else s
+
+/** 数一行末尾连着几个反斜杠，区分"硬换行记号"和"转义出来的字面反斜杠"。 */
+private fun trailingBackslashes(s: String): Int {
+    var n = 0
+    for (i in s.length - 1 downTo 0) {
+        if (s[i] == '\\') n++ else break
+    }
+    return n
+}
+
+/**
+ * 两类换行不是"一句话被折成两行"，接回去会把并列结构抹平成一段：
+ * ① 上一行以顿号/分号收尾——核心 R11「并列项分行」插的就是这种换行；
+ * ② 两行都是「短标签：值」的字段行（标题：… / 封面小字：…）。
+ */
+private fun keepsBreak(prev: String, cur: String): Boolean {
+    if (prev.isEmpty() || cur.isEmpty()) return false
+    val last = prev.last()
+    if (last == '、' || last == '；') return true
+    return isFieldLine(prev) && isFieldLine(cur)
+}
+
+/**
+ * 「短标签：值」的一行。标签限定 1~12 个非空白、非标点的字符，且不能以数字开头——
+ * 这样 `10:30-20:00`、`http://…` 这类时间戳与协议不会被当成分行依据。
+ */
+private val fieldRx = Regex("""^(?!^\d)[^：:，。；、！？\s]{1,12}[：:]""")
+
+private fun isFieldLine(s: String): Boolean = fieldRx.containsMatchIn(s)
+
+/** 中日韩与全角字符之间接行不补空格，否则中文里会多出缝来。 */
+private fun isCjk(c: Char): Boolean =
+    c in '　'..'〿' || c in 'ぁ'..'ヿ' || c in '㐀'..'䶿' ||
+        c in '一'..'鿿' || c in '가'..'ힿ' || c in '豈'..'﫿' ||
+        c in '！'..'｠'
+
 @Composable
 fun ReadingView(body: String, modifier: Modifier = Modifier, mode: SymbolMode = SymbolMode.Dim) {
     val blocks = parseBlocks(body)
@@ -166,7 +231,7 @@ fun ReadingView(body: String, modifier: Modifier = Modifier, mode: SymbolMode = 
                     modifier = Modifier.padding(top = 20.dp, bottom = 6.dp),
                 )
                 is Blk.Para -> InlineText(
-                    text = b.lines.joinToString(""), mode = mode,
+                    text = joinPara(b.lines), mode = mode,
                     linkColor = linkColor, dimColor = dimColor, codeBg = codeBg,
                     style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 28.sp),
                     modifier = Modifier.padding(vertical = 6.dp),

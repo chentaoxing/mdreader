@@ -25,7 +25,7 @@
 | 你在用什么 | 拿哪个 | 形态 |
 | --- | --- | --- |
 | Windows x64 | [portable.zip](https://github.com/chentaoxing/mdreader/releases/download/v0.2.3/mdreader-0.2.3-portable.zip) | 图形界面，自包含解压即用 |
-| Android 8.0+ | [apk](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-0.1.4-android.apk) | 图形界面（arm64 / armv7 / x86_64），双击 .md 直接读 |
+| Android 8.0+ | [apk](https://github.com/chentaoxing/mdreader/releases/download/v0.2.3/mdreader-0.2.3-android.apk) | 图形界面（arm64 / armv7 / x86_64），双击 .md 直接读 |
 | 任何有浏览器的设备 | [chentaoxing.github.io/mdreader](https://chentaoxing.github.io/mdreader/) | Web/WASM 版，在线用，也可存下离线用 |
 | Linux x86_64 | [musl tar.gz](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-cli-0.1.4-linux-x86_64-musl.tar.gz) | 命令行，静态链接零依赖（含 `libmdcore_ffi.a`） |
 | Windows on ARM | [arm64 zip](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-cli-0.1.4-windows-arm64.zip) | 命令行 |
@@ -35,9 +35,9 @@
 0.2.1 修掉这条路上两个会改坏文件的编码缺陷（带 BOM 的 UTF-8 存回去 BOM 丢失、GBK/GB18030 一律写不回去）；
 0.2.2 让标题栏与任务栏显示文件名；0.2.3 修阅读视图把并列字段行抹平成一段、把核心插的分行又接回去、
 以及右栏按定宽排版导致行尾跑出可视区。
-核心 `mdcore` / `mdcore-ffi` / `mdfile-cli` 的排版判定一行未改，33 份语料的指纹在 0.1.4 与 0.2.3 之间逐字节相同，
-所以 Android / Linux / ARM 的包仍挂在 v0.1.4 上——那是它们各自的最新构建，不是漏发。
-要跟着发需要各自的构建链路（Android 的 `versionName` 已同步到 0.2.3 / versionCode 9，但 APK 没构建）。
+核心 `mdcore` / `mdcore-ffi` / `mdfile-cli` 的排版判定一行未改，33 份语料的指纹在 0.1.4 与 0.2.3 之间逐字节相同。
+Android 已用 0.2.3 核心重打 APK（versionCode 9，签名指纹不变）并在模拟器实测：接行修复同步移植（标签行/顿号分号不再被抹平），
+33 语料指纹与桌面基线逐字节对齐；Linux / ARM 的包仍挂在 v0.1.4 上——那是它们各自的最新构建，不是漏发，要跟着发需要各自的构建链路。
 
 ---
 
