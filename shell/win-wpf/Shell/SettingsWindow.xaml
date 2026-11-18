@@ -17,66 +17,175 @@
             </DockPanel>
         </Border>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16">
-            <StackPanel>
+        <TabControl Margin="0" Background="{DynamicResource WindowBg}" BorderThickness="0">
 
-                <TextBlock Text="编辑之后，保存去哪" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextInk}"/>
-                <Border BorderBrush="{DynamicResource PanelLine}" BorderThickness="1" Padding="14,10" Margin="0,8,0,0"
-                        Background="{DynamicResource PanelBg}">
+            <!-- ============ Tab 1：保存与编辑（原设置内容）============ -->
+            <TabItem Header="保存与编辑">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16">
                     <StackPanel>
-                        <RadioButton x:Name="RSrcNew" Content="同目录新文件 —— 原件不动，改动写成「原名.改于时间.md」放在原件旁边（默认）"
-                                     GroupName="tgt" FontSize="14" Margin="0,0,0,8"/>
-                        <RadioButton x:Name="RSrcOver" Content="覆盖源文件 —— 直接写回你打开的那个文件。会先留一份 .bak，落盘前还会重读磁盘核对"
-                                     GroupName="tgt" FontSize="14"/>
-                        <TextBlock Margin="0,10,0,0" FontSize="12.5" LineHeight="20" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextMuted}"
-                                   Text="这个软件对外的说法是「不改内容」——它自己算出来的排版结果永远写不进原件。选覆盖之后，能写进原件的也只有你亲手打的字。"/>
-                    </StackPanel>
-                </Border>
 
-                <TextBlock Text="另存为的默认目录" FontSize="16" FontWeight="Bold" Margin="0,18,0,0"
-                           Foreground="{DynamicResource TextInk}"/>
-                <DockPanel Margin="0,8,0,0" LastChildFill="True">
-                    <Button x:Name="BtnPickSaveDir" Content="选目录…" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnPickSaveDir"/>
-                    <Button x:Name="BtnClearSaveDir" Content="改回原件所在目录" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnClearSaveDir"/>
-                    <TextBox x:Name="TxtSaveAsDir" FontSize="13" Padding="6,4" VerticalContentAlignment="Center"/>
-                </DockPanel>
-                <TextBlock Margin="0,6,0,0" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}"
-                           Text="留空 = 每次从源文件所在目录开始。填了就从这里开始，目录不存在会自动退回源文件目录。"/>
+                        <TextBlock Text="编辑之后，保存去哪" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextInk}"/>
+                        <Border BorderBrush="{DynamicResource PanelLine}" BorderThickness="1" Padding="14,10" Margin="0,8,0,0"
+                                Background="{DynamicResource PanelBg}">
+                            <StackPanel>
+                                <RadioButton x:Name="RSrcNew" Content="同目录新文件 —— 原件不动，改动写成「原名.改于时间.md」放在原件旁边（默认）"
+                                             GroupName="tgt" FontSize="14" Margin="0,0,0,8"/>
+                                <RadioButton x:Name="RSrcOver" Content="覆盖源文件 —— 直接写回你打开的那个文件。会先留一份 .bak，落盘前还会重读磁盘核对"
+                                             GroupName="tgt" FontSize="14"/>
+                                <TextBlock Margin="0,10,0,0" FontSize="12.5" LineHeight="20" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           Text="这个软件对外的说法是「不改内容」——它自己算出来的排版结果永远写不进原件。选覆盖之后，能写进原件的也只有你亲手打的字。"/>
+                            </StackPanel>
+                        </Border>
 
-                <TextBlock Text="定时自动存档" FontSize="16" FontWeight="Bold" Margin="0,18,0,0"
-                           Foreground="{DynamicResource TextInk}"/>
-                <Border BorderBrush="{DynamicResource PanelLine}" BorderThickness="1" Padding="14,10" Margin="0,8,0,0"
-                        Background="{DynamicResource PanelBg}">
-                    <StackPanel>
-                        <CheckBox x:Name="ChkAutoArc" Content="开着编辑时，每隔一段时间把还没保存的内容写一份到缓存目录"
-                                  FontSize="14" Checked="OnAutoArcChanged" Unchecked="OnAutoArcChanged"/>
-                        <StackPanel x:Name="PanelArc" Orientation="Horizontal" Margin="0,12,0,0">
-                            <TextBlock Text="间隔（分钟）" VerticalAlignment="Center" FontSize="13" Margin="0,0,8,0"/>
-                            <TextBox x:Name="TxtArcMinutes" Width="56" FontSize="13" Padding="6,4"/>
-                            <TextBlock Text="每个文件最多留几份" VerticalAlignment="Center" FontSize="13" Margin="20,0,8,0"/>
-                            <TextBox x:Name="TxtArcKeep" Width="56" FontSize="13" Padding="6,4"/>
-                        </StackPanel>
-                        <DockPanel Margin="0,10,0,0" LastChildFill="True">
-                            <Button x:Name="BtnPickArcDir" Content="选目录…" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnPickArcDir"/>
-                            <Button x:Name="BtnOpenArcDir" Content="打开缓存目录" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnOpenArcDir"/>
-                            <TextBox x:Name="TxtArcDir" FontSize="13" Padding="6,4" VerticalContentAlignment="Center"/>
+                        <TextBlock Text="另存为的默认目录" FontSize="16" FontWeight="Bold" Margin="0,18,0,0"
+                                   Foreground="{DynamicResource TextInk}"/>
+                        <DockPanel Margin="0,8,0,0" LastChildFill="True">
+                            <Button x:Name="BtnPickSaveDir" Content="选目录…" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnPickSaveDir"/>
+                            <Button x:Name="BtnClearSaveDir" Content="改回原件所在目录" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnClearSaveDir"/>
+                            <TextBox x:Name="TxtSaveAsDir" FontSize="13" Padding="6,4" VerticalContentAlignment="Center"/>
                         </DockPanel>
-                        <TextBlock x:Name="LblArcNote" Margin="0,8,0,0" FontSize="12.5" LineHeight="20" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextMuted}"/>
+                        <TextBlock Margin="0,6,0,0" FontSize="12.5" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}"
+                                   Text="留空 = 每次从源文件所在目录开始。填了就从这里开始，目录不存在会自动退回源文件目录。"/>
+
+                        <TextBlock Text="定时自动存档" FontSize="16" FontWeight="Bold" Margin="0,18,0,0"
+                                   Foreground="{DynamicResource TextInk}"/>
+                        <Border BorderBrush="{DynamicResource PanelLine}" BorderThickness="1" Padding="14,10" Margin="0,8,0,0"
+                                Background="{DynamicResource PanelBg}">
+                            <StackPanel>
+                                <CheckBox x:Name="ChkAutoArc" Content="开着编辑时，每隔一段时间把还没保存的内容写一份到缓存目录"
+                                          FontSize="14" Checked="OnAutoArcChanged" Unchecked="OnAutoArcChanged"/>
+                                <StackPanel x:Name="PanelArc" Orientation="Horizontal" Margin="0,12,0,0">
+                                    <TextBlock Text="间隔（分钟）" VerticalAlignment="Center" FontSize="13" Margin="0,0,8,0"/>
+                                    <TextBox x:Name="TxtArcMinutes" Width="56" FontSize="13" Padding="6,4"/>
+                                    <TextBlock Text="每个文件最多留几份" VerticalAlignment="Center" FontSize="13" Margin="20,0,8,0"/>
+                                    <TextBox x:Name="TxtArcKeep" Width="56" FontSize="13" Padding="6,4"/>
+                                </StackPanel>
+                                <DockPanel Margin="0,10,0,0" LastChildFill="True">
+                                    <Button x:Name="BtnPickArcDir" Content="选目录…" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnPickArcDir"/>
+                                    <Button x:Name="BtnOpenArcDir" Content="打开缓存目录" DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnOpenArcDir"/>
+                                    <TextBox x:Name="TxtArcDir" FontSize="13" Padding="6,4" VerticalContentAlignment="Center"/>
+                                </DockPanel>
+                                <TextBlock x:Name="LblArcNote" Margin="0,8,0,0" FontSize="12.5" LineHeight="20" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextMuted}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="弹窗" FontSize="16" FontWeight="Bold" Margin="0,18,0,0"
+                                   Foreground="{DynamicResource TextInk}"/>
+                        <StackPanel Margin="0,8,0,0">
+                            <CheckBox x:Name="ChkWarnEdit" Content="点「编辑」时先弹那屏大字警告，确认了才进编辑" FontSize="14" Margin="0,0,0,8"/>
+                            <CheckBox x:Name="ChkAskClose" Content="关软件时有未保存改动先问一句" FontSize="14" Margin="0,0,0,8"/>
+                            <TextBlock FontSize="12.5" LineHeight="20" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}"
+                                       Text="关掉询问也不会丢东西：只要缓存存档是开着的，关闭那一刻的内容已经先写进缓存目录了。"/>
+                        </StackPanel>
+
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
+            </TabItem>
 
-                <TextBlock Text="弹窗" FontSize="16" FontWeight="Bold" Margin="0,18,0,0"
-                           Foreground="{DynamicResource TextInk}"/>
-                <StackPanel Margin="0,8,0,0">
-                    <CheckBox x:Name="ChkWarnEdit" Content="点「编辑」时先弹那屏大字警告，确认了才进编辑" FontSize="14" Margin="0,0,0,8"/>
-                    <CheckBox x:Name="ChkAskClose" Content="关软件时有未保存改动先问一句" FontSize="14" Margin="0,0,0,8"/>
-                    <TextBlock FontSize="12.5" LineHeight="20" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}"
-                               Text="关掉询问也不会丢东西：只要缓存存档是开着的，关闭那一刻的内容已经先写进缓存目录了。"/>
-                </StackPanel>
+            <!-- ============ Tab 2：版式（纯显示层，不写回文件）============ -->
+            <TabItem Header="版式">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,16">
+                    <StackPanel>
 
-            </StackPanel>
-        </ScrollViewer>
+                        <TextBlock Text="阅读视图的版式" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextInk}"/>
+                        <TextBlock Margin="0,4,0,0" FontSize="12.5" LineHeight="20" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   Text="只改屏幕上「怎么排」，一个字都不写回文件、也不动正文校验和。这是显示层，和左栏「预设（重排规则）」是两回事。"/>
+
+                        <Border BorderBrush="{DynamicResource PanelLine}" BorderThickness="1" Padding="16,12" Margin="0,10,0,0"
+                                Background="{DynamicResource PanelBg}">
+                            <StackPanel>
+                                <!-- 字体 -->
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96"/><ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="正文字体" VerticalAlignment="Center" FontSize="14"/>
+                                    <ComboBox Grid.Column="1" x:Name="CmbBodyFont" IsEditable="True" FontSize="13" Height="28"/>
+                                </Grid>
+                                <Grid Margin="0,8,0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96"/><ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="代码字体" VerticalAlignment="Center" FontSize="14"/>
+                                    <ComboBox Grid.Column="1" x:Name="CmbMonoFont" IsEditable="True" FontSize="13" Height="28"/>
+                                </Grid>
+
+                                <!-- 对齐 -->
+                                <Grid Margin="0,8,0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96"/><ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="对齐" VerticalAlignment="Center" FontSize="14"/>
+                                    <ComboBox Grid.Column="1" x:Name="CmbAlign" FontSize="13" Height="28">
+                                        <ComboBoxItem Content="左对齐"/>
+                                        <ComboBoxItem Content="两端对齐"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- 滑块们：左标签 / 中间滑块 / 右数值 -->
+                                <Grid Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="96"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="正文字号" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="0" Grid.Column="1" x:Name="SldSize"  Minimum="9" Maximum="36" TickFrequency="0.5" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="2" x:Name="LblSize"  VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="行距" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="1" Grid.Column="1" x:Name="SldLine"  Minimum="1.0" Maximum="3.0" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="2" x:Name="LblLine"  VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="段间距" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="2" Grid.Column="1" x:Name="SldParaGap" Minimum="0" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="2" x:Name="LblParaGap" VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="首行缩进" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="3" Grid.Column="1" x:Name="SldIndent" Minimum="0" Maximum="4" TickFrequency="0.5" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="2" x:Name="LblIndent" VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="行宽上限" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="4" Grid.Column="1" x:Name="SldMeasure" Minimum="360" Maximum="2000" TickFrequency="20" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="2" x:Name="LblMeasure" VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="页边距" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="5" Grid.Column="1" x:Name="SldMargin" Minimum="0.4" Maximum="2.5" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="2" x:Name="LblMargin" VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="标题缩放" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="6" Grid.Column="1" x:Name="SldHeading" Minimum="0.6" Maximum="2.0" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="6" Grid.Column="2" x:Name="LblHeading" VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="列表缩进" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="7" Grid.Column="1" x:Name="SldListIndent" Minimum="0.5" Maximum="2.0" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="7" Grid.Column="2" x:Name="LblListIndent" VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+
+                                    <TextBlock Grid.Row="8" Grid.Column="0" Text="表格密度" VerticalAlignment="Center" FontSize="14"/>
+                                    <Slider    Grid.Row="8" Grid.Column="1" x:Name="SldTable" Minimum="0.6" Maximum="2.0" TickFrequency="0.05" IsSnapToTickEnabled="True" Margin="0,6" ValueChanged="OnTypeSlider"/>
+                                    <TextBlock Grid.Row="8" Grid.Column="2" x:Name="LblTable" VerticalAlignment="Center" FontSize="13" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button x:Name="BtnResetType" Content="恢复默认版式" FontSize="14" Padding="16,6" Click="OnResetType"/>
+                            <TextBlock Margin="14,0,0,0" VerticalAlignment="Center" FontSize="12.5"
+                                       Foreground="{DynamicResource TextMuted}"
+                                       Text="默认 = 本软件出厂观感；改完点底部「保存设置」立即重画右栏。"/>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
     </DockPanel>
 </Window>

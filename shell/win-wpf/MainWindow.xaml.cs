@@ -25,6 +25,10 @@ public partial class MainWindow : Window
     private bool _ready;
     private Settings _settings = new();
 
+    private bool _typeBarLoading;   // 同步版式栏控件值时屏蔽事件，避免回写/重渲染风暴
+    private static readonly string[] BarBodyFonts =
+        { Typography.DefaultBodyFont, "微软雅黑", "宋体", "黑体", "楷体", "等线", "Segoe UI" };
+
     /// <summary>字号档位。只影响屏幕上的版式，不写回文件。</summary>
     private static readonly (string Name, double Scale)[] TypeScales =
     {
@@ -42,6 +46,7 @@ public partial class MainWindow : Window
         CmbType.SelectedIndex = tw >= 0 ? tw : 1;
         ApplyView(_settings.View == "专心读");
         ChkAuto.IsChecked = _settings.AutoCheck;
+        InitTypeBar();
         _ready = true;
         // 主题变了要重画阅读视图：FlowDocument 的颜色是渲染当时定下来的，不会自己跟着变
         Theme.ThemeManager.Reapplied += OnThemeReapplied;
@@ -157,7 +162,7 @@ public partial class MainWindow : Window
             _encLabel = "认不出";
             _srcText = "";
             ViewSrc.Text = "";
-            ViewOut.Document = ReadingRenderer.RenderReading("", Mode, Scale);
+            ViewOut.Document = ReadingRenderer.RenderReading("", Mode, Scale, _settings.Typography);
             GridRules.ItemsSource = null;
             BtnSave.IsEnabled = false;
             LblSrcMeta.Text = $"{bytes.Length:N0} 字节 · 编码未知";
@@ -211,7 +216,7 @@ public partial class MainWindow : Window
             GridRules.ItemsSource = null;
             BtnSave.IsEnabled = false;
             ViewSrc.Text = _srcText;
-            ViewOut.Document = ReadingRenderer.RenderReading("", Mode, Scale);
+            ViewOut.Document = ReadingRenderer.RenderReading("", Mode, Scale, _settings.Typography);
             LblOutMeta.Text = "";
             return;
         }
@@ -220,7 +225,7 @@ public partial class MainWindow : Window
         {
             LblStatus.Text = $"核心返回 {_result.Status}（{MdCore.StatusText(_result.Status)}）：{_result.Error}";
             ViewSrc.Text = _srcText;
-            ViewOut.Document = ReadingRenderer.RenderReading("", Mode, Scale);
+            ViewOut.Document = ReadingRenderer.RenderReading("", Mode, Scale, _settings.Typography);
             GridRules.ItemsSource = null;
             BtnSave.IsEnabled = false;
             return;
@@ -272,7 +277,7 @@ public partial class MainWindow : Window
     {
         // 只在内容真的不一样时才回写左栏：编辑模式下用户的光标不能因为切阅读模式/字号被抹掉
         if (ViewSrc.Text != _srcText) ViewSrc.Text = _srcText;
-        ViewOut.Document = ReadingRenderer.RenderReading(_result.Body, Mode, Scale);
+        ViewOut.Document = ReadingRenderer.RenderReading(_result.Body, Mode, Scale, _settings.Typography);
         var kept = _rows.Count(x => x.Accept && !x.Locked);
         LblOutMeta.Text = $"保留 {kept}/{_rows.Count} 条规则 · {_result.StructuralChanges} 处结构变化";
         LblStatus.Text = _result.ContentUntouched
@@ -385,6 +390,73 @@ public partial class MainWindow : Window
             ViewOut.HorizontalAlignment = HorizontalAlignment.Stretch;
             LblOutTitle.Text = "优化后的读法";
         }
+    }
+
+    // ---- 版式栏（编辑态主界面，纯显示层，不写回文件）--------------------
+    private void InitTypeBar() => BarBodyFont.ItemsSource = BarBodyFonts;
+
+    private void SyncTypeBar()
+    {
+        _typeBarLoading = true;
+        var t = _settings.Typography;
+        BarBodyFont.Text = t.BodyFont;
+        BarSize.Value = t.BodySize;
+        BarLine.Value = t.LineHeightFactor;
+        BarParaGap.Value = t.ParaGap;
+        BarIndent.Value = t.FirstLineIndent;
+        BarMeasure.Value = t.Measure;
+        BarHeading.Value = t.HeadingScale;
+        BarTable.Value = t.TableDensity;
+        BarAlign.SelectedIndex = t.Align == "justify" ? 1 : 0;
+        _typeBarLoading = false;
+        RefreshBarLabels();
+    }
+
+    private void OnTypeBarVal(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_typeBarLoading || !_editOn) return;
+        CommitTypeBar();
+    }
+
+    private void OnTypeBarSel(object sender, RoutedEventArgs e)
+    {
+        if (_typeBarLoading || !_editOn) return;
+        CommitTypeBar();
+    }
+
+    private void CommitTypeBar()
+    {
+        var t = _settings.Typography;
+        t.BodyFont = string.IsNullOrWhiteSpace(BarBodyFont.Text) ? Typography.DefaultBodyFont : BarBodyFont.Text.Trim();
+        t.BodySize = BarSize.Value;
+        t.LineHeightFactor = BarLine.Value;
+        t.ParaGap = BarParaGap.Value;
+        t.FirstLineIndent = BarIndent.Value;
+        t.Measure = BarMeasure.Value;
+        t.HeadingScale = BarHeading.Value;
+        t.TableDensity = BarTable.Value;
+        t.Align = BarAlign.SelectedIndex == 1 ? "justify" : "left";
+        t.Sanitize();
+        _settings.Save();
+        RefreshBarLabels();
+        RerenderReading();   // 只重画右栏，不碰左栏编辑缓冲、不覆盖状态条
+    }
+
+    private void RefreshBarLabels()
+    {
+        BarSizeVal.Text = $"{BarSize.Value:F1}";
+        BarLineVal.Text = $"{BarLine.Value:F2}";
+        BarParaGapVal.Text = $"{BarParaGap.Value:F0}";
+        BarIndentVal.Text = $"{BarIndent.Value:F1}字";
+        BarMeasureVal.Text = $"{BarMeasure.Value:F0}";
+        BarHeadingVal.Text = $"{BarHeading.Value:F2}×";
+        BarTableVal.Text = $"{BarTable.Value:F2}×";
+    }
+
+    private void RerenderReading()
+    {
+        ViewOut.Document = ReadingRenderer.RenderReading(
+            _coreBytes.Length == 0 ? "" : _result.Body, Mode, Scale, _settings.Typography);
     }
 
     private void OnPresetChanged(object s, SelectionChangedEventArgs e)
@@ -505,6 +577,8 @@ public partial class MainWindow : Window
         ViewSrc.IsUndoEnabled = on;                       // 只读时没必要留撤销栈，编辑时必须有
         BtnEdit.Content = on ? "编辑：开（点这里关闭）" : "编辑：关";
         BtnSaveSrc.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        BarType.Visibility = on ? Visibility.Visible : Visibility.Collapsed;   // 版式栏随编辑开合（像 Word 的格式条）
+        if (on) SyncTypeBar();
         BtnSaveSrc.IsEnabled = false;
         RefreshEditUi();
         // 手动改 _lastArchived 的地方一律把路径一起清掉：留着上一轮（甚至上一个文件）的存档路径，
@@ -760,6 +834,9 @@ public partial class MainWindow : Window
 
         _settings.Save();
         RefreshEditUi();
+        // 版式是纯显示层：改了立刻重画右栏，不动正文、不碰源文件
+        ViewOut.Document = ReadingRenderer.RenderReading(
+            _coreBytes.Length == 0 ? "" : _result.Body, Mode, Scale, _settings.Typography);
         if (_editOn)
         {
             if (_settings.AutoArchive)
@@ -775,7 +852,8 @@ public partial class MainWindow : Window
         LblStatus.Text = "✓ 设置已保存：保存目标「" + _settings.EditSaveTarget + "」 · 自动存档 " +
                          (_settings.AutoArchive ? "每 " + _settings.AutoArchiveMinutes + " 分钟" : "关") +
                          " · 编辑前弹确认 " + (_settings.WarnBeforeEdit ? "开" : "关") +
-                         " · 关闭时询问 " + (_settings.AskOnClose ? "开" : "关") + "。";
+                         " · 关闭时询问 " + (_settings.AskOnClose ? "开" : "关") +
+                         " · 版式已更新（纯显示层，未改动任何文件）。";
     }
 
     /// <summary>

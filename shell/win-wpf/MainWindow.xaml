@@ -47,6 +47,51 @@
             </DockPanel>
         </Border>
 
+        <!-- 版式栏：只在「编辑」打开时出现，像 Word 的格式条，改完右栏实时跟着变。纯显示层，不写回文件。 -->
+        <Border x:Name="BarType" DockPanel.Dock="Top" Visibility="Collapsed"
+                Background="{DynamicResource HeaderBg}" BorderBrush="{DynamicResource PanelLine}" BorderThickness="0,0,0,1" Padding="14,8">
+            <WrapPanel>
+                <TextBlock Text="版式" Style="{StaticResource Cap}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                <TextBlock Text="字体" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox x:Name="BarBodyFont" IsEditable="True" Width="150" Height="26" VerticalAlignment="Center" Margin="0,0,14,0" SelectionChanged="OnTypeBarSel"/>
+
+                <TextBlock Text="字号" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Slider x:Name="BarSize" Width="110" Minimum="9" Maximum="36" TickFrequency="0.5" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,0,4,0" ValueChanged="OnTypeBarVal"/>
+                <TextBlock x:Name="BarSizeVal" Width="40" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,0,12,0"/>
+
+                <TextBlock Text="行距" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Slider x:Name="BarLine" Width="110" Minimum="1.0" Maximum="3.0" TickFrequency="0.05" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,0,4,0" ValueChanged="OnTypeBarVal"/>
+                <TextBlock x:Name="BarLineVal" Width="40" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,0,12,0"/>
+
+                <TextBlock Text="段距" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Slider x:Name="BarParaGap" Width="100" Minimum="0" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,0,4,0" ValueChanged="OnTypeBarVal"/>
+                <TextBlock x:Name="BarParaGapVal" Width="34" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,0,12,0"/>
+
+                <TextBlock Text="首行缩进" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Slider x:Name="BarIndent" Width="90" Minimum="0" Maximum="4" TickFrequency="0.5" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,0,4,0" ValueChanged="OnTypeBarVal"/>
+                <TextBlock x:Name="BarIndentVal" Width="34" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,0,12,0"/>
+
+                <TextBlock Text="对齐" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <ComboBox x:Name="BarAlign" Width="92" Height="26" VerticalAlignment="Center" Margin="0,0,14,0" SelectionChanged="OnTypeBarSel">
+                    <ComboBoxItem Content="左对齐"/>
+                    <ComboBoxItem Content="两端对齐"/>
+                </ComboBox>
+
+                <TextBlock Text="行宽" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Slider x:Name="BarMeasure" Width="110" Minimum="360" Maximum="2000" TickFrequency="20" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,0,4,0" ValueChanged="OnTypeBarVal"/>
+                <TextBlock x:Name="BarMeasureVal" Width="40" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,0,12,0"/>
+
+                <TextBlock Text="标题" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Slider x:Name="BarHeading" Width="90" Minimum="0.6" Maximum="2.0" TickFrequency="0.05" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,0,4,0" ValueChanged="OnTypeBarVal"/>
+                <TextBlock x:Name="BarHeadingVal" Width="40" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,0,12,0"/>
+
+                <TextBlock Text="表格" Style="{StaticResource Cap}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <Slider x:Name="BarTable" Width="90" Minimum="0.6" Maximum="2.0" TickFrequency="0.05" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="0,0,4,0" ValueChanged="OnTypeBarVal"/>
+                <TextBlock x:Name="BarTableVal" Width="40" VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource TextMuted}" Margin="0,0,6,0"/>
+            </WrapPanel>
+        </Border>
+
         <!-- 状态条：把「正文没变」这件事摆在明面上 -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelLine}" BorderThickness="0,1,0,0" Padding="14,7">
             <TextBlock x:Name="LblStatus" FontSize="12.5" Foreground="{DynamicResource StatusFg}" TextWrapping="Wrap"

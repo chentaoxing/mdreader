@@ -1,17 +1,23 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using Microsoft.Win32;
+using MdFileAssistant.Reading;
 
 namespace MdFileAssistant.Shell;
 
 /// <summary>
-/// 设置窗口。它改的是「保存去哪、要不要弹、多久存一次」这些规矩，
-/// 不碰文件内容，也不写注册表。取消=什么都不改；保存=立刻生效并落 settings.json。
+/// 设置窗口。它改的是「保存去哪、要不要弹、多久存一次」这些规矩，以及「版式（怎么排）」——
+/// 版式是纯显示层：不碰文件内容，也不写注册表。取消=什么都不改；保存=立刻生效并落 settings.json。
 /// </summary>
 public partial class SettingsWindow : Window
 {
     private readonly Settings _s;
+    private bool _ready;   // InitializeComponent 期间滑块会先触发 ValueChanged，那时标签字段还没建好，必须挡住
 
     public SettingsWindow(Settings current)
     {
@@ -30,7 +36,92 @@ public partial class SettingsWindow : Window
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "MdFileAssistant", "settings.json") + "，纯文本，可直接删。";
         UpdateArcNote();
+        InitTypographyTab();
+        _ready = true;
     }
+
+    // ---- 版式 tab --------------------------------------------------------
+
+    private static readonly string[] PreferredBodyFonts =
+        { "Microsoft YaHei UI, Segoe UI", "微软雅黑", "宋体", "黑体", "楷体", "等线", "Segoe UI" };
+    private static readonly string[] PreferredMonoFonts =
+        { "Consolas, Cascadia Mono, Courier New", "Consolas", "Cascadia Mono", "Courier New", "宋体" };
+
+    private void InitTypographyTab()
+    {
+        FillFonts(CmbBodyFont, _s.Typography.BodyFont, PreferredBodyFonts);
+        FillFonts(CmbMonoFont, _s.Typography.MonoFont, PreferredMonoFonts);
+        LoadTypographyIntoControls(_s.Typography);
+    }
+
+    /// <summary>常用字体兜底列表 + 可编辑（用户可自行输入本机已装字体名）。
+    /// P1 不枚举全部系统字体，避免依赖不稳定 API；后续若要全列表再补。</summary>
+    private static void FillFonts(ComboBox cmb, string current, string[] preferred)
+    {
+        cmb.ItemsSource = preferred;
+        cmb.Text = string.IsNullOrWhiteSpace(current) ? preferred[0] : current;
+    }
+
+    private void LoadTypographyIntoControls(Typography t)
+    {
+        CmbBodyFont.Text = t.BodyFont;
+        CmbMonoFont.Text = t.MonoFont;
+        CmbAlign.SelectedIndex = t.Align == "justify" ? 1 : 0;
+        SldSize.Value = t.BodySize;
+        SldLine.Value = t.LineHeightFactor;
+        SldParaGap.Value = t.ParaGap;
+        SldIndent.Value = t.FirstLineIndent;
+        SldMeasure.Value = t.Measure;
+        SldMargin.Value = t.PageMarginScale;
+        SldHeading.Value = t.HeadingScale;
+        SldListIndent.Value = t.ListIndentScale;
+        SldTable.Value = t.TableDensity;
+        RefreshTypeLabels();
+    }
+
+    private void OnTypeSlider(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_ready) return;   // 构造期滑块赋值触发的 ValueChanged 一律忽略，避免碰未创建的标签控件
+        RefreshTypeLabels();
+    }
+
+    private void RefreshTypeLabels()
+    {
+        LblSize.Text = $"{SldSize.Value:F1}pt";
+        LblLine.Text = $"{SldLine.Value:F2}";
+        LblParaGap.Text = $"{SldParaGap.Value:F0}pt";
+        LblIndent.Text = $"{SldIndent.Value:F1}字";
+        LblMeasure.Text = $"{SldMeasure.Value:F0}";
+        LblMargin.Text = $"{SldMargin.Value:F2}×";
+        LblHeading.Text = $"{SldHeading.Value:F2}×";
+        LblListIndent.Text = $"{SldListIndent.Value:F2}×";
+        LblTable.Text = $"{SldTable.Value:F2}×";
+    }
+
+    private void OnResetType(object s, RoutedEventArgs e) => LoadTypographyIntoControls(new Typography());
+
+    private static string PickFont(ComboBox cmb, string fallback) =>
+        string.IsNullOrWhiteSpace(cmb.Text) ? fallback : cmb.Text.Trim();
+
+    private void ReadTypographyInto(Settings s)
+    {
+        var t = s.Typography;
+        t.BodyFont = PickFont(CmbBodyFont, Typography.DefaultBodyFont);
+        t.MonoFont = PickFont(CmbMonoFont, Typography.DefaultMonoFont);
+        t.Align = CmbAlign.SelectedIndex == 1 ? "justify" : "left";
+        t.BodySize = SldSize.Value;
+        t.LineHeightFactor = SldLine.Value;
+        t.ParaGap = SldParaGap.Value;
+        t.FirstLineIndent = SldIndent.Value;
+        t.Measure = SldMeasure.Value;
+        t.PageMarginScale = SldMargin.Value;
+        t.HeadingScale = SldHeading.Value;
+        t.ListIndentScale = SldListIndent.Value;
+        t.TableDensity = SldTable.Value;
+        t.Sanitize();
+    }
+
+    // ---- 其余 tab（原有逻辑）--------------------------------------------
 
     private void UpdateArcNote()
     {
@@ -96,6 +187,7 @@ public partial class SettingsWindow : Window
         _s.AutoArchiveDir = dir == Settings.DefaultCacheDir ? "" : dir;
         _s.WarnBeforeEdit = ChkWarnEdit.IsChecked == true;
         _s.AskOnClose = ChkAskClose.IsChecked == true;
+        ReadTypographyInto(_s);
 
         if (!string.IsNullOrWhiteSpace(_s.SaveAsDir) && !Directory.Exists(_s.SaveAsDir))
         {

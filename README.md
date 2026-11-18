@@ -1,6 +1,10 @@
-<img src="assets/brand/icon-tile.png" alt="MD文档阅读助手" width="96" height="96" />
+<img src="assets/brand/icon-tile.png" alt="MD文档阅读助手 · Markdown Reader" width="96" height="96" />
 
-# MD文档阅读助手
+# MD文档阅读助手 · Markdown Reader
+
+> **English** — A fast, **offline Markdown reader & reformatter**. It *reads Markdown the way your eyes want*: re-lays out `.md` for human reading — typography, heading levels, lists, tables, whitespace — and can show/hide the Markdown syntax, while **never changing a single character of your content**. No AI, no account, no telemetry, nothing uploaded. One Rust core, five forms: **Windows · Android · Linux · Web (WASM)**. Free & open source (MIT).
+>
+> **中文** — 一个**离线 Markdown 阅读器 / 排版重排器**：把"写给 AI 读的 `.md`"按人眼阅读习惯重新呈现，只调排版与显示，**一个字内容都不改**；不需要 AI，不联网、不上传、无账号、不埋点。
 
 **今天大量的 `.md` 是写给 AI 读的，但拍板、核定、审阅的人还是人。**
 而 Markdown 的排版和格式，是按书写方便长出来的，不是按人的眼睛长出来的——同一份文件，机器读着没问题，人读着累。
@@ -20,12 +24,12 @@
 排版是确定性的事，所以结果可复现——**同一个 Rust 核心，在五个平台对同一份文件逐字节给出同一结论**
 （本机实测对账 4/5：Windows / Linux / Android / 浏览器，平台明细见[文末状态表](#5-五平台状态诚实版)）。
 
-## 下载（v0.2.3）
+## 下载（v0.3.0）
 
 | 你在用什么 | 拿哪个 | 形态 |
 | --- | --- | --- |
-| Windows x64 | [portable.zip](https://github.com/chentaoxing/mdreader/releases/download/v0.2.3/mdreader-0.2.3-portable.zip) | 图形界面，自包含解压即用 |
-| Android 8.0+ | [apk](https://github.com/chentaoxing/mdreader/releases/download/v0.2.3/mdreader-0.2.3-android.apk) | 图形界面（arm64 / armv7 / x86_64），双击 .md 直接读 |
+| Windows x64 | [portable.zip](https://github.com/chentaoxing/mdreader/releases/download/v0.3.0/mdreader-0.3.0-portable.zip) | 图形界面，自包含解压即用 |
+| Android 8.0+ | [apk](https://github.com/chentaoxing/mdreader/releases/download/v0.3.0/mdreader-0.3.0-android.apk) | 图形界面（arm64 / armv7 / x86_64），双击 .md 直接读 |
 | 任何有浏览器的设备 | [chentaoxing.github.io/mdreader](https://chentaoxing.github.io/mdreader/) | Web/WASM 版，在线用，也可存下离线用 |
 | Linux x86_64 | [musl tar.gz](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-cli-0.1.4-linux-x86_64-musl.tar.gz) | 命令行，静态链接零依赖（含 `libmdcore_ffi.a`） |
 | Windows on ARM | [arm64 zip](https://github.com/chentaoxing/mdreader/releases/download/v0.1.4/mdreader-cli-0.1.4-windows-arm64.zip) | 命令行 |
@@ -35,7 +39,8 @@
 0.2.1 修掉这条路上两个会改坏文件的编码缺陷（带 BOM 的 UTF-8 存回去 BOM 丢失、GBK/GB18030 一律写不回去）；
 0.2.2 让标题栏与任务栏显示文件名；0.2.3 修阅读视图把并列字段行抹平成一段、把核心插的分行又接回去、
 以及右栏按定宽排版导致行尾跑出可视区。
-核心 `mdcore` / `mdcore-ffi` / `mdfile-cli` 的排版判定一行未改，33 份语料的指纹在 0.1.4 与 0.2.3 之间逐字节相同。
+**0.3.0 加「版式」**：显示层字体 / 字号 / 行距 / 段距 / 首行缩进 / 对齐 / 行宽 / 标题缩放 / 表格密度可调（设置窗「版式」tab + 编辑态主界面「版式栏」），**仍一个字不改正文、不进指纹**；Android 应用名加后缀「-Android」与 Windows 版区分。
+核心 `mdcore` / `mdcore-ffi` / `mdfile-cli` 的排版判定一行未改，33 份语料的指纹在 0.1.4 与 0.3.0 之间逐字节相同。
 Android 已用 0.2.3 核心重打 APK（versionCode 9，签名指纹不变）并在模拟器实测：接行修复同步移植（标签行/顿号分号不再被抹平），
 33 语料指纹与桌面基线逐字节对齐；Linux / ARM 的包仍挂在 v0.1.4 上——那是它们各自的最新构建，不是漏发，要跟着发需要各自的构建链路。
 

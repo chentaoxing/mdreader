@@ -28,8 +28,8 @@ public static class ReadingRenderer
     /// <summary>超过这个长度不做富文本（几 MB 的 FlowDocument 会把界面拖死），降级为纯文本上屏。</summary>
     public const int MaxRichChars = 800_000;
 
-    private static readonly FontFamily TextFam = new("Microsoft YaHei UI, Segoe UI");
-    private static readonly FontFamily Mono = new("Consolas, Cascadia Mono, Courier New");
+    // 字体不再写死在这里：正文 / 代码字体一律取自传入的 Typography（版式），
+    // 这样「版式」面板改了字体，下一次渲染就跟着变。
 
     // 颜色一律从主题取（渲染当时取，所以切主题后重画就换新色）。
     // 这里绝不写死色值——否则深色模式下会出现"白底黑字的一块"。
@@ -66,10 +66,11 @@ public static class ReadingRenderer
         public readonly List<string> Aligns = new();
     }
 
-    public static FlowDocument RenderReading(string text, ReadingMode mode, double scale)
+    public static FlowDocument RenderReading(string text, ReadingMode mode, double scale, Typography typo)
     {
         var sc = scale <= 0 ? 1.0 : scale;
-        var doc = NewDoc(sc);
+        typo ??= new Typography();
+        var doc = NewDoc(sc, typo);
         AutomationProperties.SetName(doc, "阅读视图");
 
         if (text.Length > MaxRichChars)
@@ -95,14 +96,14 @@ public static class ReadingRenderer
         {
             switch (b.Kind)
             {
-                case Kind.Head: AddHeading(doc, b, mode, sc); break;
-                case Kind.Para: AddParagraph(doc, b, mode, sc); break;
-                case Kind.Quote: AddQuote(doc, b, mode, sc); break;
-                case Kind.Item: AddItem(doc, b, mode, sc); break;
-                case Kind.Code: AddCode(doc, b, sc); break;
-                case Kind.Table: AddTable(doc, b, mode, sc); break;
+                case Kind.Head: AddHeading(doc, b, mode, sc, typo); break;
+                case Kind.Para: AddParagraph(doc, b, mode, sc, typo); break;
+                case Kind.Quote: AddQuote(doc, b, mode, sc, typo); break;
+                case Kind.Item: AddItem(doc, b, mode, sc, typo); break;
+                case Kind.Code: AddCode(doc, b, sc, typo); break;
+                case Kind.Table: AddTable(doc, b, mode, sc, typo); break;
                 case Kind.Rule: AddRule(doc, sc); break;
-                case Kind.Meta: AddMeta(doc, b, sc); break;
+                case Kind.Meta: AddMeta(doc, b, sc, typo); break;
             }
         }
         if (doc.Blocks.Count == 0)
@@ -110,15 +111,16 @@ public static class ReadingRenderer
         return doc;
     }
 
-    private static FlowDocument NewDoc(double sc) => new()
+    private static FlowDocument NewDoc(double sc, Typography typo) => new()
     {
-        FontFamily = TextFam,
-        FontSize = Px(15.5, sc),
+        FontFamily = typo.BodyFamily,
+        FontSize = Px(typo.BodySize, sc),
         Foreground = BodyInk,
-        LineHeight = Px(15.5, sc) * 1.85,
+        LineHeight = Px(typo.BodySize, sc) * typo.LineHeightFactor,
         LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
-        PagePadding = new Thickness(22, 18, 22, 30),
-        TextAlignment = TextAlignment.Left,
+        PagePadding = new Thickness(22 * typo.PageMarginScale, 18 * typo.PageMarginScale,
+                                    22 * typo.PageMarginScale, 30 * typo.PageMarginScale),
+        TextAlignment = typo.AlignEnum,
         // 行长上限：窗口再宽也不让一行跑到眼睛跟不上的地方。这是阅读视图唯一的「版式硬约束」。
         // 字号放大时上限同步放大，保持同样的字数。
         //
@@ -126,7 +128,7 @@ public static class ReadingRenderer
         // 不是"上限"。默认 1240 宽的窗口里右栏只有 ~560px，正文却被按 880 排版，
         // 超出的一截直接裁在窗口边上——每行末尾几个字永远看不见
         // （实测截图：「三条线（推」到这里就断了）。上限交给 MaxPageWidth，栏宽跟着容器走。
-        MaxPageWidth = 880 * sc,
+        MaxPageWidth = typo.Measure * sc,
     };
 
     private static double Px(double v, double sc) => Math.Round(v * sc * 2) / 2;
@@ -314,10 +316,11 @@ public static class ReadingRenderer
 
     // ---- 块渲染 ----------------------------------------------------------
 
-    private static void AddHeading(FlowDocument doc, Blk b, ReadingMode mode, double sc)
+    private static void AddHeading(FlowDocument doc, Blk b, ReadingMode mode, double sc, Typography typo)
     {
         int lv = Math.Clamp(b.Level, 1, 6);
-        double size = lv switch { 1 => Px(25, sc), 2 => Px(21, sc), 3 => Px(18, sc), 4 => Px(16.5, sc), _ => Px(15.5, sc) };
+        double size = (lv switch { 1 => 25, 2 => 21, 3 => 18, 4 => 16.5, _ => typo.BodySize }) * typo.HeadingScale;
+        size = Px(size, sc);
         var p = new Paragraph
         {
             FontSize = size,
@@ -338,41 +341,43 @@ public static class ReadingRenderer
             if (mode == ReadingMode.Raw) p.Inlines.Add(new Run(b.Marker + " ") { Foreground = BodyInk, FontWeight = p.FontWeight });
             else if (mode == ReadingMode.Dim) p.Inlines.Add(new Run(b.Marker + " ") { Foreground = MarkupBrush, FontWeight = FontWeights.Normal });
         }
-        if (b.Lines.Count > 0) Fill(p, b.Lines[0], mode);
+        if (b.Lines.Count > 0) Fill(p, b.Lines[0], mode, typo);
         doc.Blocks.Add(p);
     }
 
-    private static void AddParagraph(FlowDocument doc, Blk b, ReadingMode mode, double sc)
+    private static void AddParagraph(FlowDocument doc, Blk b, ReadingMode mode, double sc, Typography typo)
     {
-        var p = NewBody(sc, new Thickness(0, 0, 0, 11 * sc));
-        Fill(p, Join(b.Lines), mode);
+        var p = NewBody(sc, new Thickness(0, 0, 0, typo.ParaGap * sc), typo);
+        if (typo.FirstLineIndent != 0) p.TextIndent = typo.FirstLineIndent * p.FontSize;
+        Fill(p, Join(b.Lines), mode, typo);
         doc.Blocks.Add(p);
     }
 
-    private static Paragraph NewBody(double sc, Thickness margin) => new()
+    private static Paragraph NewBody(double sc, Thickness margin, Typography typo) => new()
     {
-        FontSize = Px(15.5, sc),
-        LineHeight = Px(15.5, sc) * 1.85,
+        FontSize = Px(typo.BodySize, sc),
+        LineHeight = Px(typo.BodySize, sc) * typo.LineHeightFactor,
         Margin = margin,
     };
 
-    private static void AddQuote(FlowDocument doc, Blk b, ReadingMode mode, double sc)
+    private static void AddQuote(FlowDocument doc, Blk b, ReadingMode mode, double sc, Typography typo)
     {
-        var p = NewBody(sc, new Thickness(b.Level * 12 * sc, 0, 0, 13 * sc));
+        var p = NewBody(sc, new Thickness(b.Level * 12 * sc, 0, 0, 13 * sc), typo);
         p.Foreground = QuoteInk;
         p.Background = QuoteBack;
         p.BorderBrush = QuoteBar;
         p.BorderThickness = new Thickness(3, 0, 0, 0);
         p.Padding = new Thickness(12, 5, 10, 5);
-        Fill(p, Join(b.Lines), mode);
+        Fill(p, Join(b.Lines), mode, typo);
         doc.Blocks.Add(p);
     }
 
-    private static void AddItem(FlowDocument doc, Blk b, ReadingMode mode, double sc)
+    private static void AddItem(FlowDocument doc, Blk b, ReadingMode mode, double sc, Typography typo)
     {
         var ordered = b.Marker.Length > 0 && char.IsDigit(b.Marker[0]);
-        var p = NewBody(sc, new Thickness((16 + b.Level * 20) * sc, 0, 0, (b.Loose ? 10 : 4) * sc));
-        p.TextIndent = -(ordered ? 20 : 16) * sc;
+        var ls = typo.ListIndentScale;
+        var p = NewBody(sc, new Thickness((16 + b.Level * 20) * ls * sc, 0, 0, (b.Loose ? 10 : 4) * sc), typo);
+        p.TextIndent = -(ordered ? 20 : 16) * ls * sc;
 
         if (b.Marker.Length > 0 && !ordered)
         {
@@ -392,16 +397,16 @@ public static class ReadingRenderer
             { Foreground = done ? LinkInk : MarkupBrush, FontWeight = done ? FontWeights.SemiBold : FontWeights.Normal });
             else p.Inlines.Add(new Run(b.Task) { Foreground = MarkupBrush });
         }
-        if (b.Lines.Count > 0) Fill(p, Join(b.Lines), mode);
+        if (b.Lines.Count > 0) Fill(p, Join(b.Lines), mode, typo);
         doc.Blocks.Add(p);
     }
 
-    private static void AddCode(FlowDocument doc, Blk b, double sc)
+    private static void AddCode(FlowDocument doc, Blk b, double sc, Typography typo)
     {
         double size = Px(13.5, sc);
         if (b.Lang.Length > 0)
         {
-            var tag = new Paragraph(new Run(b.Lang) { Foreground = MetaBrush, FontFamily = Mono, FontSize = Px(11, sc) })
+            var tag = new Paragraph(new Run(b.Lang) { Foreground = MetaBrush, FontFamily = typo.MonoFamily, FontSize = Px(11, sc) })
             {
                 Margin = new Thickness(0, 8 * sc, 0, 0),
                 Padding = new Thickness(12, 3, 12, 1),
@@ -414,7 +419,7 @@ public static class ReadingRenderer
         {
             var p = new Paragraph
             {
-                FontFamily = Mono,
+                FontFamily = typo.MonoFamily,
                 FontSize = size,
                 LineHeight = size * 1.55,
                 Foreground = CodeInk,
@@ -441,13 +446,13 @@ public static class ReadingRenderer
         });
     }
 
-    private static void AddMeta(FlowDocument doc, Blk b, double sc)
+    private static void AddMeta(FlowDocument doc, Blk b, double sc, Typography typo)
     {
         for (int k = 0; k < b.Lines.Count; k++)
         {
             var p = new Paragraph
             {
-                FontFamily = Mono,
+                FontFamily = typo.MonoFamily,
                 FontSize = Px(12, sc),
                 LineHeight = Px(12, sc) * 1.5,
                 Foreground = MetaBrush,
@@ -461,7 +466,7 @@ public static class ReadingRenderer
         doc.Blocks.Add(new Paragraph(new Run(" ")) { FontSize = Px(6, sc), LineHeight = Px(10, sc), Margin = new Thickness(0, 0, 0, 10 * sc) });
     }
 
-    private static void AddTable(FlowDocument doc, Blk b, ReadingMode mode, double sc)
+    private static void AddTable(FlowDocument doc, Blk b, ReadingMode mode, double sc, Typography typo)
     {
         var header = Cells(b.Header[0]);
         int cols = Math.Max(header.Count, b.Aligns.Count);
@@ -475,7 +480,7 @@ public static class ReadingRenderer
             {
                 var p = new Paragraph
                 {
-                    FontFamily = Mono,
+                    FontFamily = typo.MonoFamily,
                     FontSize = Px(13, sc),
                     LineHeight = Px(13, sc) * 1.5,
                     Margin = new Thickness(0, 0, 0, 1),
@@ -509,20 +514,21 @@ public static class ReadingRenderer
                 var txt = c < cells.Count ? cells[c] : "";
                 var para = new Paragraph
                 {
-                    FontSize = Px(13.5, sc),
-                    LineHeight = Px(13.5, sc) * 1.5,
+                    FontSize = Px(13.5 * typo.TableDensity, sc),
+                    LineHeight = Px(13.5 * typo.TableDensity, sc) * 1.5,
                     Margin = new Thickness(0),
                     FontWeight = isHead ? FontWeights.SemiBold : FontWeights.Normal,
                     Foreground = isHead ? HeadInk : BodyInk,
                     TextAlignment = AlignOf(c, b.Aligns),
                 };
-                if (txt.Length > 0) Fill(para, txt, mode);
+                if (txt.Length > 0) Fill(para, txt, mode, typo);
                 row.Cells.Add(new TableCell(para)
                 {
                     Background = isHead ? CellHead : index % 2 == 1 ? CellAlt : PanelBack,
                     BorderBrush = CellLine,
                     BorderThickness = new Thickness(0, 0, 1, 1),
-                    Padding = new Thickness(9, 5, 9, 5),
+                    Padding = new Thickness(9 * typo.TableDensity, 5 * typo.TableDensity,
+                                           9 * typo.TableDensity, 5 * typo.TableDensity),
                 });
             }
             grp.Rows.Add(row);
@@ -636,7 +642,7 @@ public static class ReadingRenderer
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>把一段 Markdown 文本填进段落。'\n' 是硬换行，落成 LineBreak。</summary>
-    private static void Fill(Paragraph p, string s, ReadingMode mode)
+    private static void Fill(Paragraph p, string s, ReadingMode mode, Typography typo)
     {
         var hidden = mode == ReadingMode.Hidden;
         int pos = 0;
@@ -679,7 +685,7 @@ public static class ReadingRenderer
                 var ticks = t.TakeWhile(c => c == '`').Count();
                 Pair(t, t[..ticks], t[ticks..^ticks], t[^ticks..], r =>
                 {
-                    r.FontFamily = Mono;
+                    r.FontFamily = typo.MonoFamily;
                     r.FontSize = p.FontSize * 0.9;
                     if (hidden) { r.Foreground = CodeInk; r.Background = CodeBack; }
                 });

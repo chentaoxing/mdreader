@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using MdFileAssistant.Reading;
 
 namespace MdFileAssistant.Shell;
 
@@ -18,6 +19,12 @@ public sealed class Settings
     public string Type { get; set; } = "标准";
     public string View { get; set; } = "对比源文件";
     public string Theme { get; set; } = "跟随系统";
+
+    /// <summary>
+    /// 阅读视图的版式（字体/字号/行距/段距/缩进/对齐/行宽/页边距/标题缩放/列表缩进/表格密度）。
+    /// 纯显示层，不写回文件、不进正文指纹；与核心「预设(Preset)」无关，命名一律叫「版式」。
+    /// </summary>
+    public Typography Typography { get; set; } = new();
 
     /// <summary>
     /// 启动 3 秒后静默查一次更新（照 ChinaSeal 的做法，默认开）。
@@ -87,6 +94,8 @@ public sealed class Settings
                 s.EditSaveTarget = SaveNewToSameDir;
             if (s.AutoArchiveMinutes is < 1 or > 240) s.AutoArchiveMinutes = 2;
             if (s.AutoArchiveKeep is < 0 or > 5000) s.AutoArchiveKeep = 40;
+            s.Typography ??= new Typography();   // 老设置文件里还没有版式这一段，用默认值
+            s.Typography.Sanitize();
             return s;
         }
         catch (Exception) { return new Settings(); }   // 设置坏了就用默认，不打扰用户
